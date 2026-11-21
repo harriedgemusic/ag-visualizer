@@ -1,7 +1,8 @@
 import type { SessionBreakdown } from '../core/breakdown'
 import type { StationInspection } from '../core/inspector'
 import type { Palette } from '../core/palette'
-import type { StationId, Status } from '../core/types'
+import type { TokenStats, TurnSummary } from '../core/telemetry'
+import type { DetailLevel, EntryDebugPreview, StationId, Status } from '../core/types'
 
 export type FeedRowPayload = {
   id: string
@@ -22,6 +23,11 @@ export type FeedRowPayload = {
   formattedCost: string
   isLong: boolean
   isRunning: boolean
+  stepIdx?: number
+  toolName?: string
+  from?: 'core' | 'agents' | 'inbound'
+  agentName?: string
+  debug?: EntryDebugPreview
 }
 
 export type SessionOption = {
@@ -63,9 +69,14 @@ export type WebviewStateMessage = {
   theme: 'auto' | 'dark' | 'light'
   isLightSurface: boolean
   textSize: 'caption' | 'footnote' | 'body'
+  detailLevel: DetailLevel
+  canDebug: boolean
   palette: Palette
   hasContext: boolean
   contextPct?: number
+  tokenStats?: TokenStats
+  sparklineSvg?: string
+  turnSummaries?: TurnSummary[]
   strings: {
     title: string
     zoomOut: string
@@ -79,6 +90,12 @@ export type WebviewStateMessage = {
     contextLabel: string
     msUnit: string
     secUnit: string
+    detailCompact: string
+    detailVerbose: string
+    detailDebug: string
+    debugWarning: string
+    turnsTitle: string
+    cacheHit: string
   }
 }
 
@@ -92,4 +109,5 @@ export type WebviewCommandMessage =
   | { type: 'selectStation'; station?: StationId }
   | { type: 'setViewMode'; viewMode: 'svg' | 'braille' }
   | { type: 'setReplayIndex'; index?: number }
+  | { type: 'setDetailLevel'; detailLevel: DetailLevel }
   | { type: 'copyMarkdown' }

@@ -141,6 +141,89 @@
     .bd-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; gap: 1px; }
     .bd-seg { border: none; padding: 0; background: var(--ag-accent); opacity: 0.85; cursor: pointer; }
     .bd-seg:hover { opacity: 1; }
+    .debug-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--ag-error);
+      background: rgba(232, 101, 79, 0.14);
+      color: var(--ag-error);
+      font-size: 11px;
+    }
+    .bd-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 5px;
+    }
+    .legend-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--ag-border);
+      background: rgba(128, 128, 128, 0.06);
+      color: var(--ag-dim);
+      font-size: 10.5px;
+    }
+    .legend-pill.is-selected { border-color: var(--ag-fg, #ebe6dc); color: var(--ag-fg, #ebe6dc); }
+    .legend-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .telemetry-box {
+      margin-top: 8px;
+      padding: 7px 9px;
+      border: 1px solid var(--ag-border);
+      border-radius: 6px;
+      font-size: 11px;
+      color: var(--ag-dim);
+    }
+    .telemetry-stats { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; }
+    .telemetry-spark svg { display: block; width: 100%; height: auto; max-height: 44px; margin: 4px 0; }
+    .turns-box {
+      margin-top: 8px;
+      padding: 6px 9px;
+      border: 1px solid var(--ag-border);
+      border-radius: 6px;
+      font-size: 11px;
+      color: var(--ag-dim);
+    }
+    .turns-toggle {
+      width: 100%;
+      padding: 0;
+      border: none;
+      background: transparent;
+      display: flex;
+      justify-content: space-between;
+      text-align: left;
+    }
+    .turns-list { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; max-height: 160px; overflow-y: auto; }
+    .turn-row { display: flex; justify-content: space-between; gap: 8px; }
+    .turn-row.is-active { color: var(--ag-accent); }
+    .feed.is-detailed { max-height: 360px; overflow-y: auto; padding-right: 2px; }
+    .row.is-clickable { cursor: pointer; padding: 2px 3px; border-radius: 4px; }
+    .row.is-clickable:hover { background: rgba(255, 255, 255, 0.05); }
+    .row-ts { font-size: 10.5px; opacity: 0.72; flex-shrink: 0; }
+    .row-tool { font-size: 10px; padding: 0 4px; border: 1px solid var(--ag-border); border-radius: 3px; flex-shrink: 0; }
+    .step-card {
+      margin: 1px 0 4px 16px;
+      padding: 7px 9px;
+      border-left: 2px solid var(--ag-accent);
+      background: rgba(128, 128, 128, 0.08);
+      font-size: 11px;
+      color: var(--ag-dim);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .step-card.is-err { border-left-color: var(--ag-error); }
+    .step-card-grid { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+    .step-debug-block { border-top: 1px solid var(--ag-border); padding-top: 3px; white-space: pre-wrap; word-break: break-word; color: inherit; }
+    .step-debug-key { font-size: 10px; text-transform: uppercase; color: var(--ag-accent); margin-right: 6px; }
+    .step-debug-block.is-err .step-debug-key { color: var(--ag-error); }
     .ins-box { margin-top: 8px; padding: 8px; border: 1px solid var(--ag-border); border-radius: 6px; font-size: 11px; }
     .ins-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
     .ins-meta { color: var(--ag-dim); }
@@ -195,10 +278,16 @@
           <option value="full">Full motion</option>
           <option value="reduced">Reduced motion</option>
         </select>
+        <select id="sel-detail" aria-label="Detail level">
+          <option value="compact">Compact</option>
+          <option value="verbose">Verbose</option>
+          <option value="debug">Debug (opt-in)</option>
+        </select>
       </div>
     </div>
     <div class="grid">
       <div class="card">
+        <div id="demo-debug-banner" class="debug-banner" style="display:none"></div>
         <div id="demo-map" class="map-stage"></div>
         <pre id="demo-braille" class="braille-stage" style="display:none"></pre>
         <div class="replay-row">
@@ -210,6 +299,8 @@
           <span id="demo-now-meter" class="now-meter"></span>
         </div>
         <div id="demo-breakdown"></div>
+        <div id="demo-telemetry" class="telemetry-box" style="display:none"></div>
+        <div id="demo-turns" class="turns-box" style="display:none"></div>
         <div id="demo-inspector" class="ins-box" style="display:none"></div>
         <div id="demo-feed" class="feed"></div>
       </div>

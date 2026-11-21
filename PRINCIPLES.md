@@ -20,7 +20,7 @@ Every raw tool call contains sensitive payloads: file contents, search patterns,
 - Search tools & web searches: tool/category name only, never queries or patterns
 - Subagents: short `Role` / `TypeName` only, never `Prompt`
 
-Verified by the privacy canary test (`CANARY_SECRET_999` across 40+ tool payloads, including `drawMap`, `foldRows`, `computeBreakdown`, `inspectStation`, `sliceBoardAt`, `drawBrailleMap`, and `formatMarkdownReport`) in `test/principles.test.ts` and enforced statically by the TypeScript AST scanner in `scripts/check-surface.mjs` (zero network APIs, zero child processes, zero filesystem writes).
+Verified by the privacy canary test (`CANARY_SECRET_999` across 40+ tool payloads, in both `compact` and `verbose` modes — including `drawMap`, `foldRows`, `computeBreakdown`, `inspectStation`, `sliceBoardAt`, `drawBrailleMap`, `formatMarkdownReport`, `computeTurnSummaries`, `computeTokenStats`, and `drawContextSparkline`) in `test/principles.test.ts` and enforced statically by the TypeScript AST scanner in `scripts/check-surface.mjs` (zero network APIs, zero child processes, zero filesystem writes). The strictly opt-in, session-ephemeral `debug` mode (Trusted Workspaces only) bounds previews to 240 chars with a red `DEBUG` banner, never feeds Markdown exports, and purges all previews immediately upon exit.
 
 ## 3. It costs next to nothing
 

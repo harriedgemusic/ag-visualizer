@@ -26,7 +26,10 @@ export class TranscriptTailer {
   private _primary: TailState | null = null
   private _children = new Map<string, TailState>()
   private _pollTimer: NodeJS.Timeout | null = null
-  private _reading = false
+  private _queue: Promise<void> = Promise.resolve()
+  private _pollQueued = false
+  private _disposed = false
+  private _generation = 0
   private _onUpdate: (board: Board) => void
   private _activeSessionId: string | undefined
   private _sessionIdle = false
@@ -45,30 +48,99 @@ export class TranscriptTailer {
     return this._reducer.board()
   }
 
-  updateSetup(setup: Setup): void {
+  updateSetup(setup: Setup, silent = false): void {
     this._reducer.updateSetup(setup)
-    this._onUpdate(this._reducer.board())
+    if (!silent && !this._disposed) {
+      this._onUpdate(this._reducer.board())
+    }
+  }
+
+  private enqueue(fn: () => Promise<void>): Promise<void> {
+    const run = this._queue.then(fn, fn)
+    this._queue = run.catch(() => {})
+    return run
+  }
+
+  private schedulePoll(): void {
+    if (this._disposed || this._pollQueued) return
+    this._pollQueued = true
+    void this.enqueue(async () => {
+      this._pollQueued = false
+      await this.doPollOnce(this._generation)
+    }).catch(() => {
+      // Never allow poll errors to surface as unhandled rejections
+    })
+  }
+
+  /**
+   * Re-reads the currently attached transcript and child transcripts from byte 0
+   * (used when switching into `debug` mode so recent historical entries receive previews).
+   */
+  async reload(): Promise<void> {
+    if (this._disposed) return
+    await this.enqueue(() => this.doReload())
+  }
+
+  private async doReload(): Promise<void> {
+    if (this._disposed) return
+    const gen = ++this._generation
+    this._reducer.reset()
+    if (this._primary) {
+      this._primary.offset = 0
+      this._primary.remainder = ''
+      this._primary.decoder = new StringDecoder('utf8')
+      this._primary.skipPartialFirstLine = false
+    }
+    for (const child of this._children.values()) {
+      child.offset = 0
+      child.remainder = ''
+      child.decoder = new StringDecoder('utf8')
+      child.skipPartialFirstLine = false
+    }
+    if (!this._primary) {
+      if (!this._disposed && gen === this._generation) {
+        this._onUpdate(this._reducer.board())
+      }
+      return
+    }
+    const changed = await this.doPollOnce(gen)
+    if (!changed && !this._disposed && gen === this._generation) {
+      // Empty/truncated/unreadable file after reset still needs a UI update so stale entries clear
+      this._onUpdate(this._reducer.board())
+    }
   }
 
   async attach(session: SessionSummary | undefined, allSessions: readonly SessionSummary[]): Promise<void> {
+    if (this._disposed) return
+    await this.enqueue(() => this.doAttach(session, allSessions))
+  }
+
+  private async doAttach(session: SessionSummary | undefined, allSessions: readonly SessionSummary[]): Promise<void> {
+    if (this._disposed) return
     if (!session && !this._primary && this._activeSessionId === undefined) return
     const nextIdle = Boolean(session && session.status === 'CASCADE_RUN_STATUS_IDLE' && !session.notFullyIdle)
     this._sessionIdle = nextIdle
     this._sessionMtimeMs = session?.mtimeMs ?? 0
 
     if (session && session.id === this._activeSessionId && this._primary?.path === session.transcriptPath) {
+      const gen = this._generation
       await this.syncChildren(session, allSessions)
+      if (this._disposed || gen !== this._generation) return
       if (this._sessionIdle && this._reducer.settleAllRunning(this._sessionMtimeMs)) {
         this._onUpdate(this._reducer.board())
       }
       return
     }
+
+    const gen = ++this._generation
     this.stopWatchers()
     this._reducer.reset()
     this._activeSessionId = session?.id
 
     if (!session) {
-      this._onUpdate(this._reducer.board())
+      if (!this._disposed && gen === this._generation) {
+        this._onUpdate(this._reducer.board())
+      }
       return
     }
 
@@ -82,17 +154,18 @@ export class TranscriptTailer {
     }
     this.watchFile(this._primary)
     await this.syncChildren(session, allSessions)
-    await this.pollOnce()
+    if (this._disposed || gen !== this._generation) return
+    await this.doPollOnce(gen)
 
-    if (this._sessionIdle && this._reducer.settleAllRunning(this._sessionMtimeMs)) {
+    if (!this._disposed && gen === this._generation && this._sessionIdle && this._reducer.settleAllRunning(this._sessionMtimeMs)) {
       this._onUpdate(this._reducer.board())
     }
 
-    this._pollTimer = setInterval(() => {
-      void this.pollOnce().catch(() => {
-        // Never allow poll errors to surface as unhandled rejections
-      })
-    }, 400)
+    if (!this._disposed && gen === this._generation) {
+      this._pollTimer = setInterval(() => {
+        this.schedulePoll()
+      }, 400)
+    }
   }
 
   async syncChildren(session: SessionSummary, allSessions: readonly SessionSummary[]): Promise<void> {
@@ -117,9 +190,7 @@ export class TranscriptTailer {
   private watchFile(state: TailState): void {
     try {
       state.watcher = fs.watch(state.path, () => {
-        void this.pollOnce().catch(() => {
-          // Ignore transient watch/read races
-        })
+        this.schedulePoll()
       })
       state.watcher.on('error', () => {
         // Fallback polling continues safely
@@ -130,28 +201,33 @@ export class TranscriptTailer {
   }
 
   async pollOnce(): Promise<void> {
-    if (this._reading) return
-    this._reading = true
-    let changed = false
-    try {
-      if (this._primary) {
-        if (await this.readDelta(this._primary)) changed = true
-      }
-      for (const child of this._children.values()) {
-        if (await this.readDelta(child)) changed = true
-      }
-      if (changed && this._sessionIdle) {
-        this._reducer.settleAllRunning(this._sessionMtimeMs)
-      }
-    } finally {
-      this._reading = false
-    }
-    if (changed) {
-      this._onUpdate(this._reducer.board())
-    }
+    if (this._disposed) return
+    await this.enqueue(async () => {
+      await this.doPollOnce(this._generation)
+    })
   }
 
-  private async readDelta(state: TailState): Promise<boolean> {
+  private async doPollOnce(gen: number): Promise<boolean> {
+    if (this._disposed || gen !== this._generation) return false
+    let changed = false
+    if (this._primary) {
+      if (await this.readDelta(this._primary, gen)) changed = true
+    }
+    if (this._disposed || gen !== this._generation) return false
+    for (const child of this._children.values()) {
+      if (await this.readDelta(child, gen)) changed = true
+      if (this._disposed || gen !== this._generation) return false
+    }
+    if (changed && this._sessionIdle) {
+      this._reducer.settleAllRunning(this._sessionMtimeMs)
+    }
+    if (changed && !this._disposed && gen === this._generation) {
+      this._onUpdate(this._reducer.board())
+    }
+    return changed
+  }
+
+  private async readDelta(state: TailState, gen: number): Promise<boolean> {
     let st: fs.Stats
     try {
       st = await fs.promises.stat(state.path)
@@ -159,6 +235,7 @@ export class TranscriptTailer {
     } catch {
       return false
     }
+    if (this._disposed || gen !== this._generation) return false
 
     if (st.size < state.offset) {
       state.offset = 0
@@ -190,10 +267,11 @@ export class TranscriptTailer {
       handle = await fs.promises.open(state.path, 'r')
       const chunkBuf = Buffer.allocUnsafe(CHUNK_BYTES)
       while (state.offset < st.size) {
+        if (this._disposed || gen !== this._generation) break
         const remaining = st.size - state.offset
         const length = Math.min(CHUNK_BYTES, remaining)
         const { bytesRead } = await handle.read(chunkBuf, 0, length, state.offset)
-        if (bytesRead <= 0) break
+        if (bytesRead <= 0 || this._disposed || gen !== this._generation) break
         state.offset += bytesRead
 
         const text = state.decoder.write(chunkBuf.subarray(0, bytesRead))
@@ -264,6 +342,8 @@ export class TranscriptTailer {
   }
 
   dispose(): void {
+    this._disposed = true
+    this._generation += 1
     this.stopWatchers()
   }
 }

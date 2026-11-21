@@ -43,6 +43,12 @@ export type Strings = {
   seconds: (s: string) => string
   minutes: (m: number, s: number) => string
   hours: (h: number, m: number) => string
+  detailCompact: string
+  detailVerbose: string
+  detailDebug: string
+  debugWarning: string
+  turnsTitle: string
+  cacheHit: string
 }
 
 const en: Strings = {
@@ -99,6 +105,12 @@ const en: Strings = {
   seconds: s => `${s} s`,
   minutes: (m, s) => `${m} min ${s} s`,
   hours: (h, m) => `${h} h ${m} min`,
+  detailCompact: 'Compact',
+  detailVerbose: 'Verbose',
+  detailDebug: 'Debug',
+  debugWarning: 'DEBUG: Showing truncated arguments, errors & thinking on screen',
+  turnsTitle: 'Turns',
+  cacheHit: 'cache',
 }
 
 const ru: Strings = {
@@ -155,6 +167,12 @@ const ru: Strings = {
   seconds: s => `${s} с`,
   minutes: (m, s) => `${m} мин ${s} с`,
   hours: (h, m) => `${h} ч ${m} мин`,
+  detailCompact: 'Компактный',
+  detailVerbose: 'Подробный',
+  detailDebug: 'Отладка',
+  debugWarning: 'DEBUG: на экране показаны обрезанные аргументы, ошибки и thinking',
+  turnsTitle: 'Ходы',
+  cacheHit: 'кэш',
 }
 
 const es: Strings = {
@@ -211,6 +229,12 @@ const es: Strings = {
   seconds: s => `${s} s`,
   minutes: (m, s) => `${m} min ${s} s`,
   hours: (h, m) => `${h} h ${m} min`,
+  detailCompact: 'Compacto',
+  detailVerbose: 'Detallado',
+  detailDebug: 'Depuración',
+  debugWarning: 'DEBUG: mostrando argumentos, errores y thinking truncados en pantalla',
+  turnsTitle: 'Turnos',
+  cacheHit: 'caché',
 }
 
 const fr: Strings = {
@@ -267,6 +291,12 @@ const fr: Strings = {
   seconds: s => `${s.replace('.', ',')} s`,
   minutes: (m, s) => `${m} min ${s} s`,
   hours: (h, m) => `${h} h ${m} min`,
+  detailCompact: 'Compact',
+  detailVerbose: 'Détaillé',
+  detailDebug: 'Débogage',
+  debugWarning: 'DEBUG : arguments, erreurs et thinking tronqués affichés à l’écran',
+  turnsTitle: 'Tours',
+  cacheHit: 'cache',
 }
 
 const de: Strings = {
@@ -323,6 +353,12 @@ const de: Strings = {
   seconds: s => `${s.replace('.', ',')} s`,
   minutes: (m, s) => `${m} Min. ${s} s`,
   hours: (h, m) => `${h} Std. ${m} Min.`,
+  detailCompact: 'Kompakt',
+  detailVerbose: 'Ausführlich',
+  detailDebug: 'Debug',
+  debugWarning: 'DEBUG: Gekürzte Argumente, Fehler & Thinking werden angezeigt',
+  turnsTitle: 'Züge',
+  cacheHit: 'Cache',
 }
 
 const it: Strings = {
@@ -379,6 +415,12 @@ const it: Strings = {
   seconds: s => `${s.replace('.', ',')} s`,
   minutes: (m, s) => `${m} min ${s} s`,
   hours: (h, m) => `${h} h ${m} min`,
+  detailCompact: 'Compatto',
+  detailVerbose: 'Dettagliato',
+  detailDebug: 'Debug',
+  debugWarning: 'DEBUG: argomenti, errori e thinking troncati mostrati a schermo',
+  turnsTitle: 'Turni',
+  cacheHit: 'cache',
 }
 
 const pt: Strings = {
@@ -435,6 +477,12 @@ const pt: Strings = {
   seconds: s => `${s.replace('.', ',')} s`,
   minutes: (m, s) => `${m} min ${s} s`,
   hours: (h, m) => `${h} h ${m} min`,
+  detailCompact: 'Compacto',
+  detailVerbose: 'Detalhado',
+  detailDebug: 'Depuração',
+  debugWarning: 'DEBUG: a mostrar argumentos, erros e thinking truncados no ecrã',
+  turnsTitle: 'Turnos',
+  cacheHit: 'cache',
 }
 
 export const LANGUAGES = ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt'] as const

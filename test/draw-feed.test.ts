@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { drawMap } from '../src/core/draw'
-import { foldRows, LIST_ROWS } from '../src/core/feed'
+import { foldRows, LIST_ROWS, VERBOSE_LIST_ROWS } from '../src/core/feed'
 import { DARK, LIGHT } from '../src/core/palette'
 import { setupFrom } from '../src/core/setup'
 import { LANGUAGES } from '../src/core/text'
@@ -114,5 +114,10 @@ describe('drawMap & foldRows', () => {
     assert.equal(pinnedRows.length, LIST_ROWS)
     assert.equal(pinnedRows[pinnedRows.length - 1]?.entry.id, 'run-pinned')
     assert.equal(pinnedRows[pinnedRows.length - 1]?.isHeld, true)
+
+    const unfolded = foldRows(entries, VERBOSE_LIST_ROWS, true, true)
+    assert.equal(unfolded.length, 21)
+    assert.equal(unfolded[0]?.times, 1)
+    assert.equal(unfolded[20]?.entry.id, 'run-old')
   })
 })

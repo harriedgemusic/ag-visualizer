@@ -50,10 +50,12 @@ export const LIGHT: Palette = {
   trail: '#9c978b',
 }
 
+const escCss = (text: string): string => text.replace(/[<>&"';{}()\\]/g, '')
+
 export const lightRules = (own: Partial<Palette> = {}): string =>
   `<style>@media (prefers-color-scheme: light){${(Object.keys(DARK) as (keyof Palette)[])
     .filter(k => own[k] === undefined && !Object.values(own).includes(DARK[k]))
-    .map(k => `[fill="${DARK[k]}"]{fill:${LIGHT[k]}}[stroke="${DARK[k]}"]{stroke:${LIGHT[k]}}`)
+    .map(k => `[fill="${escCss(DARK[k])}"]{fill:${escCss(LIGHT[k])}}[stroke="${escCss(DARK[k])}"]{stroke:${escCss(LIGHT[k])}}`)
     .join('')}}</style>`
 
 export const COLOR_NAMES: Record<string, keyof Palette> = {

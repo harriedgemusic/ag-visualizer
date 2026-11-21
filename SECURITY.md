@@ -49,6 +49,18 @@ Zero **CRITICAL** or **HIGH** findings. All **MEDIUM** and **LOW** findings from
 | MEDIUM-4 | Medium | Unbounded `shortModel()` on `claude-*` strings and unused `entries`/`model` exposed in Webview IPC | Added `clean(..., 24)` on Claude models, sanitized `step.model`/`tc.name` in `reducer.ts`, stripped `entries` and `model` from Webview IPC state |
 | LOW-1..4 | Low | Prototype-property lookups (`COLOR_NAMES`/`stations`/`STATION_COLORS`), `NaN` propagation in formatters/metrics, negative-age SMIL animations, unhandled clipboard rejections, unreset `openRowId` | Added `Object.hasOwn` + `VALID_STATIONS` guards, `Number.isFinite` checks, `>= 0` animation age guards, `vscode.env.clipboard` + `.catch()`, and `openRowId` reset on session switch |
 
+### v0.3.0 Audit (Selectable Detail Levels & Telemetry)
+
+Zero **CRITICAL** findings. Every **HIGH**, **MEDIUM**, and **LOW** finding from the v0.3.0 AppSec review was remediated prior to release:
+
+| ID | Severity | Finding | Remediation |
+| --- | --- | --- | --- |
+| HIGH-1 | High | Unvalidated `step.step_index` allowed non-numeric/HTML strings in `Entry.stepIdx`/`stepKey` and unescaped `stepIdx` interpolation under `style-src 'unsafe-inline'` | Enforced finite non-negative integer rounding for `stepIdx` at `TranscriptReducer.push()` entry, HTML-escaped `stepIdx` in `main.ts` & `demoEntry.ts`, gated detailed metadata behind `isDetailed` in IPC |
+| MEDIUM-1 | Medium | Concurrency race between `TranscriptTailer.attach()`, `reload()`, and `pollOnce()`, missed update on empty `reload()`, and missing post-`dispose()` guard | Serialized all `attach`/`reload`/`pollOnce` operations through a single async queue with monotonic `_generation` and `_disposed` checks, and guaranteed post-reset UI updates |
+| MEDIUM-2 | Medium | Truthy non-string `GENERIC.content` or malformed `tool_calls` elements (`null`/non-object/array `args`) could throw `TypeError` in `TranscriptReducer.push()` | Added strict `typeof content === 'string'` check in `parseGenericMetadata` and element/plain-object checks on `tool_calls` and `tc.args` |
+| MEDIUM-3 | Medium | Clicking `[D]` in an untrusted workspace Webview could persist `detailLevel: "debug"` into global User settings | Added `vscode.workspace.isTrusted` guards in both `config.ts` and `setDetailLevel` handler, disabled `[D]` in untrusted workspaces, and made toolbar `[D]` strictly session-ephemeral in memory |
+| LOW-1..4 | Low | Unbounded `StartLine`/`EndLine` passed to `unwrapValue()`, unused `model`/`stepIdx` in `ModelStepTelemetry`, unescaped direct-caller palette values in `drawMap`/`lightRules`, per-render listener/DOM churn | Bounded line-range strings (`<= 32` chars) before `unwrapValue()`, removed unused fields from `ModelStepTelemetry`, escaped palette values in `draw.ts`/`palette.ts`, moved Webview/demo clicks to one-time delegated listeners with `innerHTML` clearing on hide |
+
 ## Reporting a Vulnerability
 
 If you discover a security or privacy issue, please open a private security advisory or issue on GitHub: https://github.com/harriedgemusic/ag-visualizer/issues

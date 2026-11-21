@@ -5,11 +5,13 @@ import { drawBrailleMap, formatMarkdownReport } from '../src/core/braille'
 import { computeBreakdown } from '../src/core/breakdown'
 import { classifyTool } from '../src/core/classify'
 import { drawMap } from '../src/core/draw'
-import { foldRows } from '../src/core/feed'
+import { foldRows, VERBOSE_LIST_ROWS } from '../src/core/feed'
 import { inspectStation } from '../src/core/inspector'
+import { DARK } from '../src/core/palette'
 import { reduceTranscript, TranscriptReducer } from '../src/core/reducer'
 import { sliceBoardAt } from '../src/core/replay'
 import { setupFrom } from '../src/core/setup'
+import { computeTokenStats, computeTurnSummaries, drawContextSparkline } from '../src/core/telemetry'
 import type { Board, TranscriptStep } from '../src/core/types'
 
 const CANARY = 'CANARY_SECRET_999'
@@ -142,23 +144,141 @@ describe('Core Principles', () => {
     ]
 
     const ts = Date.parse('2026-11-21T12:00:04Z')
-    const board = reduceTranscript(steps, setup)
-    const svg = drawMap(board, ts, setup, { selectedStation: 'files' })
-    const rows = foldRows(board.entries, 16, true)
-    const breakdown = computeBreakdown(board, setup)
-    const inspection = inspectStation(board, 'files', setup)
-    const replayed = sliceBoardAt(board, Math.max(1, board.entries.length - 1), ts)
-    const braille = drawBrailleMap(board, ts, setup)
-    const markdown = formatMarkdownReport(board, ts, setup)
+    for (const detailLevel of ['compact', 'verbose'] as const) {
+      const modeSetup = setupFrom({ language: 'en', contextCost: true, subagentNames: true, detailLevel })
+      const board = reduceTranscript(steps, modeSetup)
+      const svg = drawMap(board, ts, modeSetup, { selectedStation: 'files' })
+      const rows = foldRows(board.entries, VERBOSE_LIST_ROWS, true, detailLevel === 'verbose')
+      const breakdown = computeBreakdown(board, modeSetup)
+      const inspection = inspectStation(board, 'files', modeSetup)
+      const replayed = sliceBoardAt(board, Math.max(1, board.entries.length - 1), ts)
+      const braille = drawBrailleMap(board, ts, modeSetup)
+      const markdown = formatMarkdownReport(board, ts, modeSetup)
+      const turns = computeTurnSummaries(board, modeSetup)
+      const tokenStats = computeTokenStats(board)
+      const sparkline = drawContextSparkline(tokenStats, DARK)
 
-    assert.ok(!JSON.stringify(board).includes(CANARY), 'Board leaked canary')
-    assert.ok(!svg.includes(CANARY), 'SVG leaked canary')
-    assert.ok(!JSON.stringify(rows).includes(CANARY), 'Feed rows leaked canary')
-    assert.ok(!JSON.stringify(breakdown).includes(CANARY), 'Breakdown leaked canary')
-    assert.ok(!JSON.stringify(inspection).includes(CANARY), 'Inspector leaked canary')
-    assert.ok(!JSON.stringify(replayed).includes(CANARY), 'Replay leaked canary')
-    assert.ok(!braille.includes(CANARY), 'Braille map leaked canary')
-    assert.ok(!markdown.includes(CANARY), 'Markdown report leaked canary')
+      assert.ok(!JSON.stringify(board).includes(CANARY), `Board (${detailLevel}) leaked canary`)
+      assert.ok(!svg.includes(CANARY), `SVG (${detailLevel}) leaked canary`)
+      assert.ok(!JSON.stringify(rows).includes(CANARY), `Feed rows (${detailLevel}) leaked canary`)
+      assert.ok(!JSON.stringify(breakdown).includes(CANARY), `Breakdown (${detailLevel}) leaked canary`)
+      assert.ok(!JSON.stringify(inspection).includes(CANARY), `Inspector (${detailLevel}) leaked canary`)
+      assert.ok(!JSON.stringify(replayed).includes(CANARY), `Replay (${detailLevel}) leaked canary`)
+      assert.ok(!braille.includes(CANARY), `Braille (${detailLevel}) leaked canary`)
+      assert.ok(!markdown.includes(CANARY), `Markdown (${detailLevel}) leaked canary`)
+      assert.ok(!JSON.stringify(turns).includes(CANARY), `Turns (${detailLevel}) leaked canary`)
+      assert.ok(!JSON.stringify(tokenStats).includes(CANARY), `TokenStats (${detailLevel}) leaked canary`)
+      assert.ok(!sparkline.includes(CANARY), `Sparkline (${detailLevel}) leaked canary`)
+    }
+  })
+
+  it('Debug mode is opt-in, bounds huge previews, never leaks into exports, and purges on exit', () => {
+    const debugSetup = setupFrom({ language: 'en', contextCost: true, detailLevel: 'debug' })
+    const reducer = new TranscriptReducer(debugSetup)
+    const hugeSecret = `${CANARY}${'x'.repeat(25_000)}`
+
+    const t0 = performance.now()
+    reducer.push({
+      step_index: 1,
+      source: 'MODEL',
+      type: 'PLANNER_RESPONSE',
+      status: 'DONE',
+      created_at: '2026-11-21T12:00:01Z',
+      model: 'gemini-4-neon-high',
+      input_tokens: 12_000,
+      cache_read_tokens: 30_000,
+      output_tokens: 180,
+      thinking: hugeSecret,
+      tool_calls: [
+        { name: 'read_file', args: { Path: '"/repo/src/app.ts"', StartLine: 12, EndLine: 48, CodeContent: hugeSecret } },
+      ],
+    })
+    reducer.push({
+      step_index: 2,
+      source: 'MODEL',
+      type: 'GENERIC',
+      status: 'ERROR',
+      error: hugeSecret,
+      created_at: '2026-11-21T12:00:02Z',
+      content: `Created At: 2026-11-21T12:00:01Z\nCompleted At: 2026-11-21T12:00:02Z\n${hugeSecret}`,
+    })
+    const debugMs = performance.now() - t0
+    assert.ok(debugMs < 10, `Debug reduction of 25k payload took ${debugMs.toFixed(3)} ms`)
+
+    const board = reducer.board()
+    const callEntry = board.entries[0]
+    assert.equal(callEntry?.debug?.lineRange, 'L12-L48')
+    assert.ok((callEntry?.debug?.thinking?.length ?? 0) <= 240)
+    assert.ok((callEntry?.debug?.error?.length ?? 0) <= 240)
+    assert.ok((callEntry?.debug?.result?.length ?? 0) <= 240)
+    assert.ok(callEntry?.debug?.thinking?.includes(CANARY))
+
+    const ts = Date.parse('2026-11-21T12:00:02Z')
+    assert.ok(!formatMarkdownReport(board, ts, debugSetup).includes(CANARY))
+    assert.ok(!drawBrailleMap(board, ts, debugSetup).includes(CANARY))
+    assert.ok(!drawMap(board, ts, debugSetup).includes(CANARY))
+    assert.ok(!JSON.stringify(computeBreakdown(board, debugSetup)).includes(CANARY))
+    assert.ok(!JSON.stringify(computeTurnSummaries(board, debugSetup)).includes(CANARY))
+    assert.ok(!JSON.stringify(computeTokenStats(board)).includes(CANARY))
+
+    // Leaving debug must immediately scrub all stored debug fields from memory
+    reducer.updateSetup(setupFrom({ language: 'en', contextCost: true, detailLevel: 'verbose' }))
+    assert.ok(!JSON.stringify(reducer.board()).includes(CANARY))
+    assert.equal(reducer.board().entries[0]?.debug, undefined)
+  })
+
+  it('validates step_index, non-string GENERIC.content, malformed tool_calls, and huge line ranges safely', () => {
+    const setup = setupFrom({ language: 'en', detailLevel: 'verbose' })
+    const malformedSteps: TranscriptStep[] = [
+      {
+        step_index: `<img src=x onerror=alert(1)>${CANARY}` as unknown as number,
+        type: 'USER_INPUT',
+        status: 'DONE',
+        created_at: '2026-11-21T12:00:00Z',
+        content: 'hello',
+      },
+      {
+        step_index: { evil: true } as unknown as number,
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        created_at: '2026-11-21T12:00:01Z',
+        model: 'gemini-4-neon-high',
+        input_tokens: 1000,
+        tool_calls: [
+          null as unknown as { name: string },
+          'bad-string' as unknown as { name: string },
+          { name: 'read_file', args: ['not-an-object'] as unknown as Record<string, unknown> },
+        ],
+      },
+      {
+        step_index: -5,
+        type: 'GENERIC',
+        status: 'DONE',
+        created_at: '2026-11-21T12:00:02Z',
+        content: { unexpected: 123 } as unknown as string,
+      },
+    ]
+
+    const board = reduceTranscript(malformedSteps, setup)
+    assert.ok(!JSON.stringify(board).includes(CANARY))
+    assert.ok(!JSON.stringify(board).includes('<img'))
+    for (const e of board.entries) {
+      assert.ok(e.stepIdx === undefined || typeof e.stepIdx === 'number')
+    }
+
+    const debugReducer = new TranscriptReducer(setupFrom({ detailLevel: 'debug' }))
+    const hugeLineStr = `"${'9'.repeat(200_000)}"`
+    const t0 = performance.now()
+    debugReducer.push({
+      step_index: 1.7,
+      type: 'PLANNER_RESPONSE',
+      status: 'DONE',
+      created_at: '2026-11-21T12:00:03Z',
+      tool_calls: [{ name: 'read_file', args: { Path: '"/a/b.ts"', StartLine: hugeLineStr, EndLine: 25 } }],
+    })
+    assert.ok(performance.now() - t0 < 5)
+    assert.equal(debugReducer.board().entries[0]?.stepIdx, 2)
+    assert.equal(debugReducer.board().entries[0]?.debug?.lineRange, 'L25')
   })
 
   it('Principle 3: respects strict CPU time budgets', () => {

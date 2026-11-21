@@ -254,6 +254,259 @@ export function getWebviewHtml(
       border-color: var(--ag-accent);
       color: var(--ag-accent);
     }
+    .detail-group {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--ag-border);
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .btn-detail {
+      height: 22px;
+      min-width: 21px;
+      padding: 0 5px;
+      border: none;
+      border-right: 1px solid var(--ag-border);
+      border-radius: 0;
+      background: transparent;
+      color: var(--ag-dim);
+      font-family: inherit;
+      font-size: 10.5px;
+      cursor: pointer;
+    }
+    .btn-detail:last-child {
+      border-right: none;
+    }
+    .btn-detail:hover:not(:disabled) {
+      background: var(--ag-hover);
+      color: var(--ag-fg);
+    }
+    .btn-detail:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .btn-detail.is-active {
+      background: rgba(225, 172, 110, 0.16);
+      color: var(--ag-accent);
+      font-weight: 600;
+    }
+    .btn-detail.is-debug-active {
+      background: rgba(232, 101, 79, 0.22);
+      color: var(--ag-error);
+      font-weight: 700;
+    }
+    .debug-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 5px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--ag-error);
+      background: rgba(232, 101, 79, 0.14);
+      color: var(--ag-error);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+    .debug-banner-close {
+      flex-shrink: 0;
+      height: 20px;
+      min-width: 20px;
+      padding: 0 5px;
+      border-radius: 4px;
+      border: 1px solid var(--ag-error);
+      background: transparent;
+      color: var(--ag-error);
+      font-family: inherit;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .breakdown-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 2px;
+    }
+    .legend-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--ag-border);
+      background: rgba(128, 128, 128, 0.06);
+      color: var(--ag-dim);
+      font-family: inherit;
+      font-size: 10.5px;
+      cursor: pointer;
+      font-variant-numeric: tabular-nums;
+    }
+    .legend-pill:hover,
+    .legend-pill.is-selected {
+      border-color: var(--ag-fg);
+      color: var(--ag-fg);
+    }
+    .legend-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .telemetry-card {
+      border: 1px solid var(--ag-border);
+      border-radius: 8px;
+      padding: 7px 9px;
+      background: rgba(128, 128, 128, 0.05);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: 11px;
+    }
+    .telemetry-stats {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px 10px;
+      color: var(--ag-dim);
+      font-variant-numeric: tabular-nums;
+    }
+    .telemetry-stats strong {
+      color: var(--ag-fg);
+      font-weight: 600;
+    }
+    .telemetry-spark svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-height: 44px;
+    }
+    .turns-card {
+      border: 1px solid var(--ag-border);
+      border-radius: 8px;
+      padding: 6px 9px;
+      background: rgba(128, 128, 128, 0.04);
+      font-size: 11px;
+    }
+    .turns-toggle {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: var(--ag-dim);
+      font-family: inherit;
+      font-size: 11px;
+      cursor: pointer;
+      text-align: left;
+    }
+    .turns-toggle:hover {
+      color: var(--ag-fg);
+    }
+    .turns-list {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      margin-top: 6px;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    .turn-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 2px 3px;
+      border-radius: 4px;
+      color: var(--ag-dim);
+      font-variant-numeric: tabular-nums;
+    }
+    .turn-row.is-active {
+      color: var(--ag-accent);
+    }
+    .turn-left {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .turn-right {
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    .feed.is-detailed {
+      max-height: 360px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+    .row.is-clickable {
+      cursor: pointer;
+    }
+    .row.is-card-open {
+      background: var(--ag-hover);
+    }
+    .row-ts {
+      flex-shrink: 0;
+      color: var(--ag-dim);
+      opacity: 0.72;
+      font-size: 10.5px;
+      font-variant-numeric: tabular-nums;
+    }
+    .row-tool {
+      flex-shrink: 0;
+      padding: 0 4px;
+      border-radius: 3px;
+      border: 1px solid var(--ag-border);
+      color: var(--ag-dim);
+      font-size: 10px;
+      max-width: 110px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .step-card {
+      margin: 1px 0 4px 16px;
+      padding: 7px 9px;
+      border-left: 2px solid var(--ag-accent);
+      border-radius: 0 6px 6px 0;
+      background: rgba(128, 128, 128, 0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--ag-dim);
+    }
+    .step-card.is-err {
+      border-left-color: var(--ag-error);
+    }
+    .step-card-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .step-debug-block {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding-top: 3px;
+      border-top: 1px solid var(--ag-border);
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--ag-fg);
+    }
+    .step-debug-key {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--ag-accent);
+    }
+    .step-debug-block.is-err .step-debug-key {
+      color: var(--ag-error);
+    }
     .braille-stage {
       margin: 0;
       padding: 8px;

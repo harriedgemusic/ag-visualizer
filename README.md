@@ -11,8 +11,13 @@ A calm, passive, privacy-first live visual map of **Antigravity IDE** agent acti
 
 ---
 
-## Features (v0.2.0)
+## Features (v0.3.0)
 
+- **Selectable Detail Levels (`Compact` | `Verbose` | opt-in `Debug`)**:
+  - Switchable right in the panel toolbar (`C` / `V` / `D`), standalone demo, or via `agVisualizer.detailLevel` (default `compact`).
+  - **Compact**: calm, folded 16-row activity feed with zero raw content retained.
+  - **Verbose**: unfolded scrollable feed (up to 80 recent entries) with `HH:MM:SS` timestamps, `#stepIdx`, `toolName` badges, clickable **Step Metadata Cards**, **Model Token & Cache Hit % Telemetry + Context Growth Sparkline**, clickable **Textual Breakdown Legend** pills, and collapsible **Turn-by-Turn Breakdown** (`Turns`).
+  - **Debug (opt-in, session-ephemeral in Trusted Workspaces)**: displays a red `DEBUG` warning banner and adds truncated (`<= 240` chars) `lines`, `args`, `error`, `result`, and `thinking` previews inside clicked Step Cards — immediately purged from memory when switched back to `Verbose`/`Compact`, never persisted by the toolbar, and never included in Markdown snapshots.
 - **10 Stations around the Core (`AGY`)**: `You`, `Model`, `Memory`, `Files`, `Shell`, `Network`, `Browser`, `Agents`, `Skills`, `Hooks` — with `you-top` or `you-bottom` orientation.
 - **Context Window Ring & Model Status**: Displays live context fill (`input_tokens + cache_read_tokens`) around the central core (`<70%` ash, `70–89%` accent, `>=90%` red), active shortened model name (e.g., `neon-high`, `argon-high`, `hydrogen-xhigh`), model-switch concentric ripples, and answer-ready expanding ring.
 - **Live Pulses, Worn Spokes & Route Trail**:
@@ -43,11 +48,11 @@ A calm, passive, privacy-first live visual map of **Antigravity IDE** agent acti
 
 ### Manual Installation from VSIX (Recommended)
 
-1. Download **`ag-visualizer-0.2.1.vsix`** from [GitHub Releases](https://github.com/harriedgemusic/ag-visualizer/releases/latest).
-2. In **Antigravity IDE**, open the **Extensions** panel (`Cmd+Shift+X` / `Ctrl+Shift+X`), click the **`⋯`** menu at the top-right, choose **Install from VSIX...**, and select `ag-visualizer-0.2.1.vsix`.
+1. Download **`ag-visualizer-0.3.0.vsix`** from [GitHub Releases](https://github.com/harriedgemusic/ag-visualizer/releases/latest).
+2. In **Antigravity IDE**, open the **Extensions** panel (`Cmd+Shift+X` / `Ctrl+Shift+X`), click the **`⋯`** menu at the top-right, choose **Install from VSIX...**, and select `ag-visualizer-0.3.0.vsix`.
    - Or install via CLI:
      ```bash
-     "/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --install-extension ag-visualizer-0.2.1.vsix --force
+     "/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --install-extension ag-visualizer-0.3.0.vsix --force
      ```
 3. Reload Antigravity IDE (`Developer: Reload Window`), then click the **Work Map** icon in the Activity Bar or run **Antigravity Work Map: Open Beside Chat** from the Command Palette.
 
@@ -59,7 +64,7 @@ cd ag-visualizer
 npm install
 npm run check
 npm run package
-"/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --install-extension ag-visualizer-0.2.1.vsix --force
+"/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --install-extension ag-visualizer-0.3.0.vsix --force
 ```
 
 ## Standalone Browser Demo
@@ -86,6 +91,7 @@ open demo/index.html
 | `agVisualizer.contextCost` | `true` | Show estimated context token delta per call and per station |
 | `agVisualizer.contextWindowTokens` | `0` | Context denominator override (`0` = auto by model, e.g. `1,000,000` for Gemini) |
 | `agVisualizer.textSize` | `"footnote"` | Feed font size: `caption`, `footnote`, `body` |
+| `agVisualizer.detailLevel` | `"compact"` | Detail level: `compact`, `verbose`, or opt-in `debug` (application-scoped, restricted) |
 | `agVisualizer.subagentNames` | `true` | Prefix subagent steps with their short role name |
 | `agVisualizer.colors` | `{}` | Override palette colors by role (`background`, `node`, `line`, `spoke`, `text`, `label`, `faint`, `accent`, `active`, `error`, `memory`, `memoryActive`, `route`) |
 | `agVisualizer.memoryPaths` | `[]` | Extra path fragments routed to `Memory` |
@@ -101,7 +107,7 @@ open demo/index.html
 
 ```text
 src/
-├── core/        # Pure, zero-I/O engine (types, palette, 7-lang text, setup, classify, cost, feed, draw, reducer, breakdown, inspector, replay, braille, demo)
+├── core/        # Pure, zero-I/O engine (types, palette, 7-lang text, setup, classify, cost, feed, draw, reducer, breakdown, inspector, replay, braille, telemetry, demo)
 ├── watcher/     # Strictly read-only transcript tailer (64 KB chunked) & SQLite/FS session discovery
 ├── extension/   # Antigravity IDE (VS Code) extension host, settings, strict-CSP webview shell
 └── webview/     # Webview client & standalone browser demo entrypoint

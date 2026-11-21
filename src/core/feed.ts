@@ -29,14 +29,16 @@ function fold(row: Row, e: Entry, took: number): void {
 const isPlain = (e: Entry): boolean => e.status === 'ok' && e.mark === undefined
 
 export const LIST_ROWS = 16
+export const VERBOSE_LIST_ROWS = 80
 
 /**
  * Produces the activity feed rows, newest first.
- * Consecutive finished entries at the same station/origin fold into a single row (`+N`).
+ * Consecutive finished entries at the same station/origin fold into a single row (`+N`)
+ * unless `noFold` is true.
  * Still-running entries beyond `max` remain pinned at the bottom (up to half the list)
  * so the list always matches the running stations on the map.
  */
-export function foldRows(entries: readonly Entry[], max = LIST_ROWS, apart = false): Row[] {
+export function foldRows(entries: readonly Entry[], max = LIST_ROWS, apart = false, noFold = false): Row[] {
   const rows: Row[] = []
   const running: Row[] = []
   let isCut = false
@@ -47,6 +49,7 @@ export function foldRows(entries: readonly Entry[], max = LIST_ROWS, apart = fal
     const took = e.endedAt === undefined ? 0 : Math.max(0, e.endedAt - e.startedAt)
     const last = rows[rows.length - 1]
     if (
+      !noFold &&
       !isCut &&
       last !== undefined &&
       isPlain(e) &&

@@ -12,6 +12,26 @@ export type StationId =
 
 export type Status = 'run' | 'ok' | 'err' | 'block'
 
+export type DetailLevel = 'compact' | 'verbose' | 'debug'
+
+export type EntryDebugPreview = {
+  args?: string
+  lineRange?: string
+  error?: string
+  result?: string
+  thinking?: string
+}
+
+export type ModelStepTelemetry = {
+  at: number
+  inputTokens: number
+  cacheReadTokens: number
+  outputTokens: number
+  totalContextTokens: number
+  cacheHitPct: number
+  isCompaction?: boolean
+}
+
 export type Entry = {
   id: string
   station: StationId
@@ -27,6 +47,7 @@ export type Entry = {
   shared?: boolean
   stepIdx?: number
   toolName?: string
+  debug?: EntryDebugPreview
 }
 
 export type SubagentInfo = {
@@ -47,6 +68,7 @@ export type Board = {
   switchedAt?: number
   agents?: SubagentInfo[]
   open?: string
+  modelSteps?: ModelStepTelemetry[]
 }
 
 export type RawToolCall = {
@@ -93,6 +115,7 @@ export type UserOptions = {
   contextCost?: boolean
   contextWindowTokens?: number
   textSize?: 'caption' | 'footnote' | 'body' | string
+  detailLevel?: DetailLevel | string
   subagentNames?: boolean
   colors?: Record<string, string> | string
   memoryPaths?: string[] | string

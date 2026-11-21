@@ -12,6 +12,8 @@ export function isLightTheme(theme: vscode.ColorTheme): boolean {
 
 export function readUserOptions(): UserOptions & { antigravityDataDir?: string } {
   const cfg = vscode.workspace.getConfiguration('agVisualizer')
+  const rawDetail = cfg.get<string>('detailLevel', 'compact')
+  const detailLevel = !vscode.workspace.isTrusted && rawDetail === 'debug' ? 'compact' : rawDetail
   return {
     language: cfg.get<string>('language', 'auto'),
     theme: cfg.get<string>('theme', 'auto'),
@@ -22,6 +24,7 @@ export function readUserOptions(): UserOptions & { antigravityDataDir?: string }
     contextCost: cfg.get<boolean>('contextCost', true),
     contextWindowTokens: cfg.get<number>('contextWindowTokens', 0),
     textSize: cfg.get<string>('textSize', 'footnote'),
+    detailLevel,
     subagentNames: cfg.get<boolean>('subagentNames', true),
     colors: cfg.get<Record<string, string>>('colors', {}),
     memoryPaths: cfg.get<string[]>('memoryPaths', []),

@@ -1,5 +1,5 @@
-import type { StationId } from '../core/types'
-import type { WebviewCommandMessage, WebviewStateMessage } from './protocol'
+import type { DetailLevel, StationId } from '../core/types'
+import type { FeedRowPayload, WebviewCommandMessage, WebviewStateMessage } from './protocol'
 
 declare function acquireVsCodeApi(): {
   postMessage(msg: WebviewCommandMessage): void
@@ -13,6 +13,8 @@ let lastSvg = ''
 let lastOptionsFingerprint = ''
 let lastSessionKey = ''
 let openRowId: string | undefined
+let selectedStepId: string | undefined
+let turnsExpanded = false
 let breakdownMode: 'time' | 'tokens' = 'time'
 let copyFlashTimer: number | undefined
 
@@ -39,6 +41,23 @@ function escapeHtml(text: string): string {
   return text.replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[c] ?? c)
 }
 
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n)
+}
+
+function pad3(n: number): string {
+  if (n < 10) return `00${n}`
+  if (n < 100) return `0${n}`
+  return String(n)
+}
+
+function formatClockTime(ts: number, withMs = false): string {
+  if (!Number.isFinite(ts) || ts <= 0) return ''
+  const d = new Date(ts)
+  const base = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
+  return withMs ? `${base}.${pad3(d.getMilliseconds())}` : base
+}
+
 function formatLiveDuration(startedAt: number, msUnit: string, secUnit: string): string {
   const ms = Math.max(1, Date.now() - startedAt)
   if (ms < 1000) return `${Math.round(ms)} ${msUnit}`
@@ -53,6 +72,7 @@ function formatCompactMs(ms: number, msUnit: string, secUnit: string): string {
 }
 
 function formatCompactTokens(tokens: number): string {
+  if (!Number.isFinite(tokens) || tokens < 0) return '0'
   if (tokens < 1000) return String(Math.round(tokens))
   const k = Math.round(tokens / 1000)
   return k < 1000 ? `${k}k` : `${Math.round(tokens / 1_000_000)}M`
@@ -79,6 +99,8 @@ function applyThemeVars(s: WebviewStateMessage): void {
 
 function ensureShell(): {
   select: HTMLSelectElement
+  detailGroup: HTMLElement
+  debugBanner: HTMLElement
   btnZoomOut: HTMLButtonElement
   btnZoomIn: HTMLButtonElement
   btnLayout: HTMLButtonElement
@@ -96,6 +118,8 @@ function ensureShell(): {
   nowWhat: HTMLElement
   nowMeter: HTMLElement
   breakdownWrap: HTMLElement
+  telemetryWrap: HTMLElement
+  turnsWrap: HTMLElement
   inspectorWrap: HTMLElement
   feed: HTMLElement
 } {
@@ -105,6 +129,11 @@ function ensureShell(): {
       <div class="toolbar shell-ready">
         <select class="session-select" id="ag-session"></select>
         <div class="controls">
+          <div class="detail-group" id="ag-detail-group">
+            <button class="btn-detail" data-detail="compact" type="button">C</button>
+            <button class="btn-detail" data-detail="verbose" type="button">V</button>
+            <button class="btn-detail" data-detail="debug" type="button">D</button>
+          </div>
           <button class="btn" id="ag-zoom-out" type="button">−</button>
           <button class="btn" id="ag-zoom-in" type="button">+</button>
           <button class="btn" id="ag-layout" type="button">⇅</button>
@@ -113,6 +142,7 @@ function ensureShell(): {
           <button class="btn" id="ag-hide" type="button">▾</button>
         </div>
       </div>
+      <div class="debug-banner" id="ag-debug-banner" style="display:none"></div>
       <div class="map-wrap" id="ag-map-wrap">
         <div class="map-stage" id="ag-map-stage"></div>
         <pre class="braille-stage" id="ag-braille-stage" style="display:none"></pre>
@@ -128,10 +158,14 @@ function ensureShell(): {
         <div class="now-meter" id="ag-now-meter"></div>
       </div>
       <div class="breakdown-wrap" id="ag-breakdown-wrap" style="display:none"></div>
+      <div id="ag-telemetry-wrap" style="display:none"></div>
+      <div id="ag-turns-wrap" style="display:none"></div>
       <div id="ag-inspector-wrap" style="display:none"></div>
       <div class="feed" id="ag-feed"></div>
     `
     const select = document.getElementById('ag-session') as HTMLSelectElement
+    const detailGroup = document.getElementById('ag-detail-group') as HTMLElement
+    const debugBanner = document.getElementById('ag-debug-banner') as HTMLElement
     const btnZoomOut = document.getElementById('ag-zoom-out') as HTMLButtonElement
     const btnZoomIn = document.getElementById('ag-zoom-in') as HTMLButtonElement
     const btnLayout = document.getElementById('ag-layout') as HTMLButtonElement
@@ -143,9 +177,27 @@ function ensureShell(): {
     const replaySlider = document.getElementById('ag-replay-slider') as HTMLInputElement
     const btnNextTurn = document.getElementById('ag-next-turn') as HTMLButtonElement
     const btnReplayLive = document.getElementById('ag-replay-live') as HTMLButtonElement
+    const breakdownWrap = document.getElementById('ag-breakdown-wrap') as HTMLElement
+    const turnsWrap = document.getElementById('ag-turns-wrap') as HTMLElement
+    const inspectorWrap = document.getElementById('ag-inspector-wrap') as HTMLElement
+    const feedEl = document.getElementById('ag-feed') as HTMLElement
 
     select.addEventListener('change', () => {
       vscode.postMessage({ type: 'selectSession', sessionId: select.value })
+    })
+    detailGroup.addEventListener('click', ev => {
+      const btn = (ev.target as Element | null)?.closest('.btn-detail') as HTMLButtonElement | null
+      if (!btn || btn.disabled) return
+      const level = btn.dataset.detail as DetailLevel | undefined
+      if (level !== 'compact' && level !== 'verbose' && level !== 'debug') return
+      if (level === 'debug' && state && !state.canDebug) return
+      vscode.postMessage({ type: 'setDetailLevel', detailLevel: level })
+    })
+    debugBanner.addEventListener('click', ev => {
+      const closeBtn = (ev.target as Element | null)?.closest('#ag-debug-close')
+      if (closeBtn) {
+        vscode.postMessage({ type: 'setDetailLevel', detailLevel: 'verbose' })
+      }
     })
     btnZoomOut.addEventListener('click', () => {
       if (state) vscode.postMessage({ type: 'setZoom', zoom: Math.max(0.6, state.zoom - 0.1) })
@@ -211,9 +263,56 @@ function ensureShell(): {
     btnReplayLive.addEventListener('click', () => {
       vscode.postMessage({ type: 'setReplayIndex', index: undefined })
     })
+    breakdownWrap.addEventListener('click', ev => {
+      if (!state) return
+      const modeBtn = (ev.target as Element | null)?.closest('#ag-bd-mode')
+      if (modeBtn) {
+        breakdownMode = breakdownMode === 'time' ? 'tokens' : 'time'
+        renderBreakdown(breakdownWrap, state)
+        return
+      }
+      const stBtn = (ev.target as Element | null)?.closest('[data-station]') as HTMLElement | null
+      const st = asStationId(stBtn?.dataset.station)
+      if (!st) return
+      vscode.postMessage({
+        type: 'selectStation',
+        station: state.selectedStation === st ? undefined : st,
+      })
+    })
+    turnsWrap.addEventListener('click', ev => {
+      if (!state) return
+      const toggleBtn = (ev.target as Element | null)?.closest('#ag-turns-toggle')
+      if (!toggleBtn) return
+      turnsExpanded = !turnsExpanded
+      renderTurns(turnsWrap, state)
+    })
+    inspectorWrap.addEventListener('click', ev => {
+      const closeBtn = (ev.target as Element | null)?.closest('#ag-ins-close')
+      if (!closeBtn) return
+      vscode.postMessage({ type: 'selectStation', station: undefined })
+    })
+    feedEl.addEventListener('click', ev => {
+      if (!state) return
+      const expandBtn = (ev.target as Element | null)?.closest('.row-expand') as HTMLButtonElement | null
+      if (expandBtn) {
+        const id = expandBtn.dataset.rowId
+        openRowId = openRowId === id ? undefined : id
+        renderFeed(feedEl, state)
+        return
+      }
+      if (state.detailLevel !== 'compact') {
+        const rowEl = (ev.target as Element | null)?.closest('.row.is-clickable') as HTMLElement | null
+        const id = rowEl?.dataset.rowId
+        if (!id) return
+        selectedStepId = selectedStepId === id ? undefined : id
+        renderFeed(feedEl, state)
+      }
+    })
   }
   return {
     select: document.getElementById('ag-session') as HTMLSelectElement,
+    detailGroup: document.getElementById('ag-detail-group') as HTMLElement,
+    debugBanner: document.getElementById('ag-debug-banner') as HTMLElement,
     btnZoomOut: document.getElementById('ag-zoom-out') as HTMLButtonElement,
     btnZoomIn: document.getElementById('ag-zoom-in') as HTMLButtonElement,
     btnLayout: document.getElementById('ag-layout') as HTMLButtonElement,
@@ -231,6 +330,8 @@ function ensureShell(): {
     nowWhat: document.getElementById('ag-now-what') as HTMLElement,
     nowMeter: document.getElementById('ag-now-meter') as HTMLElement,
     breakdownWrap: document.getElementById('ag-breakdown-wrap') as HTMLElement,
+    telemetryWrap: document.getElementById('ag-telemetry-wrap') as HTMLElement,
+    turnsWrap: document.getElementById('ag-turns-wrap') as HTMLElement,
     inspectorWrap: document.getElementById('ag-inspector-wrap') as HTMLElement,
     feed: document.getElementById('ag-feed') as HTMLElement,
   }
@@ -240,6 +341,7 @@ function renderBreakdown(wrap: HTMLElement, s: WebviewStateMessage): void {
   const b = s.breakdown
   if (!b || b.shares.length === 0) {
     wrap.style.display = 'none'
+    wrap.innerHTML = ''
     return
   }
   wrap.style.display = 'flex'
@@ -263,6 +365,20 @@ function renderBreakdown(wrap: HTMLElement, s: WebviewStateMessage): void {
     })
     .join('')
 
+  const legendHtml =
+    s.detailLevel !== 'compact'
+      ? `<div class="breakdown-legend">${b.shares
+          .map(sh => {
+            const color = Object.hasOwn(STATION_COLORS, sh.station) ? STATION_COLORS[sh.station] : s.palette.accent
+            const isSelected = s.selectedStation === sh.station
+            const metric = useTokens
+              ? `${sh.tokenPct}% · ${formatCompactTokens(sh.tokens)}`
+              : `${sh.timePct}% · ${formatCompactMs(sh.timeMs, s.strings.msUnit, s.strings.secUnit)}`
+            return `<button type="button" class="legend-pill${isSelected ? ' is-selected' : ''}" data-station="${escapeHtml(sh.station)}"><span class="legend-dot" style="background:${color}"></span><span>${escapeHtml(sh.stationName)} ${escapeHtml(metric)}</span></button>`
+          })
+          .join('')}</div>`
+      : ''
+
   const modeButtonHtml = hasTokens
     ? `<button type="button" class="btn" id="ag-bd-mode">${useTokens ? 'Tokens' : 'Time'}</button>`
     : ''
@@ -273,28 +389,77 @@ function renderBreakdown(wrap: HTMLElement, s: WebviewStateMessage): void {
       ${modeButtonHtml}
     </div>
     <div class="breakdown-bar">${segmentsHtml}</div>
+    ${legendHtml}
   `
-  const modeBtn = document.getElementById('ag-bd-mode')
-  modeBtn?.addEventListener('click', () => {
-    breakdownMode = breakdownMode === 'time' ? 'tokens' : 'time'
-    if (state) renderBreakdown(wrap, state)
-  })
-  wrap.querySelectorAll<HTMLButtonElement>('.breakdown-seg').forEach(seg => {
-    seg.addEventListener('click', () => {
-      const st = asStationId(seg.dataset.station)
-      if (!st || !state) return
-      vscode.postMessage({
-        type: 'selectStation',
-        station: state.selectedStation === st ? undefined : st,
-      })
-    })
-  })
+}
+
+function renderTelemetry(wrap: HTMLElement, s: WebviewStateMessage): void {
+  const ts = s.tokenStats
+  if (s.detailLevel === 'compact' || !ts || ts.steps === 0) {
+    wrap.style.display = 'none'
+    wrap.innerHTML = ''
+    return
+  }
+  wrap.style.display = 'block'
+  const compNote = ts.compactions > 0 ? ` · ${ts.compactions}× ckpt` : ''
+  const totalsLine = `Σ in ${formatCompactTokens(ts.totalInput)} · ${s.strings.cacheHit} ${ts.overallCacheHitPct}% · out ${formatCompactTokens(ts.totalOutput)}`
+
+  wrap.innerHTML = `
+    <div class="telemetry-card">
+      <div class="telemetry-stats">
+        <span><strong>${escapeHtml(formatCompactTokens(ts.latestTotalContext))}</strong> ctx · ${escapeHtml(s.strings.cacheHit)} <strong>${ts.latestCacheHitPct}%</strong> · in ${escapeHtml(formatCompactTokens(ts.latestInput))} · out ${escapeHtml(formatCompactTokens(ts.latestOutput))}</span>
+        <span>peak ${escapeHtml(formatCompactTokens(ts.peakContextTokens))}${escapeHtml(compNote)}</span>
+      </div>
+      ${s.sparklineSvg ? `<div class="telemetry-spark">${s.sparklineSvg}</div>` : ''}
+      <div class="telemetry-stats"><span>${escapeHtml(totalsLine)}</span><span>${ts.steps} steps</span></div>
+    </div>
+  `
+}
+
+function renderTurns(wrap: HTMLElement, s: WebviewStateMessage): void {
+  const turns = s.turnSummaries
+  if (s.detailLevel === 'compact' || !turns || turns.length === 0) {
+    wrap.style.display = 'none'
+    wrap.innerHTML = ''
+    return
+  }
+  wrap.style.display = 'block'
+  const newestFirst = [...turns].reverse()
+  const listHtml = turnsExpanded
+    ? `<div class="turns-list">${newestFirst
+        .map(t => {
+          const title = t.turnNumber === 0 ? 'Pre' : `T${t.turnNumber}`
+          const stationsStr = t.topStations.map(st => `${st.stationName}×${st.count}`).join(', ')
+          const durStr =
+            t.isActive && s.replay.isLive
+              ? s.strings.runningLabel
+              : formatCompactMs(t.durationMs, s.strings.msUnit, s.strings.secUnit)
+          const tokStr = t.tokensAdded > 0 ? ` · +${formatCompactTokens(t.tokensAdded)}` : ''
+          const errStr = t.faultCount > 0 ? ` · ${t.faultCount} err` : ''
+          return `<div class="turn-row${t.isActive ? ' is-active' : ''}">
+            <span class="turn-left"><strong>${escapeHtml(title)}</strong>${stationsStr ? ` · ${escapeHtml(stationsStr)}` : ''}</span>
+            <span class="turn-right">${t.callCount}× · ${escapeHtml(durStr)}${escapeHtml(tokStr)}${escapeHtml(errStr)}</span>
+          </div>`
+        })
+        .join('')}</div>`
+    : ''
+
+  wrap.innerHTML = `
+    <div class="turns-card">
+      <button type="button" class="turns-toggle" id="ag-turns-toggle">
+        <span>${turnsExpanded ? '▾' : '▸'} ${escapeHtml(s.strings.turnsTitle)} (${turns.length})</span>
+        <span>${turnsExpanded ? '−' : '+'}</span>
+      </button>
+      ${listHtml}
+    </div>
+  `
 }
 
 function renderInspector(wrap: HTMLElement, s: WebviewStateMessage): void {
   const ins = s.inspection
   if (!ins) {
     wrap.style.display = 'none'
+    wrap.innerHTML = ''
     return
   }
   wrap.style.display = 'block'
@@ -323,12 +488,59 @@ function renderInspector(wrap: HTMLElement, s: WebviewStateMessage): void {
       ${topHtml ? `<div class="inspector-top">${topHtml}</div>` : ''}
     </div>
   `
-  document.getElementById('ag-ins-close')?.addEventListener('click', () => {
-    vscode.postMessage({ type: 'selectStation', station: undefined })
-  })
+}
+
+function renderStepCard(r: FeedRowPayload, s: WebviewStateMessage): string {
+  const stepText = r.stepIdx !== undefined ? `#${r.stepIdx}` : '—'
+  const startClock = formatClockTime(r.startedAt, true) || '—'
+  const endClock = r.endedAt !== undefined ? formatClockTime(r.endedAt, true) : r.isRunning ? s.strings.runningLabel : '—'
+  const durStr =
+    r.isRunning && s.replay.isLive
+      ? formatLiveDuration(r.startedAt, s.strings.msUnit, s.strings.secUnit)
+      : r.formattedTime
+  const originText = `${r.from ?? 'core'}${r.agentName ? ` (${r.agentName})` : ''}`
+  const isErr = r.status === 'err' || r.status === 'block'
+
+  let debugHtml = ''
+  if (s.detailLevel === 'debug' && r.debug) {
+    const blocks: string[] = []
+    if (r.debug.lineRange) {
+      blocks.push(`<div class="step-debug-block"><span class="step-debug-key">lines</span><span>${escapeHtml(r.debug.lineRange)}</span></div>`)
+    }
+    if (r.debug.args) {
+      blocks.push(`<div class="step-debug-block"><span class="step-debug-key">args</span><span>${escapeHtml(r.debug.args)}</span></div>`)
+    }
+    if (r.debug.error) {
+      blocks.push(`<div class="step-debug-block is-err"><span class="step-debug-key">error</span><span>${escapeHtml(r.debug.error)}</span></div>`)
+    }
+    if (r.debug.result) {
+      blocks.push(`<div class="step-debug-block"><span class="step-debug-key">result</span><span>${escapeHtml(r.debug.result)}</span></div>`)
+    }
+    if (r.debug.thinking) {
+      blocks.push(`<div class="step-debug-block"><span class="step-debug-key">thinking</span><span>${escapeHtml(r.debug.thinking)}</span></div>`)
+    }
+    debugHtml = blocks.join('')
+  }
+
+  return `<div class="step-card${isErr ? ' is-err' : ''}">
+    <div class="step-card-grid">
+      <span>step ${escapeHtml(stepText)}</span>
+      <span>station ${escapeHtml(r.stationName)}</span>
+      <span>status ${escapeHtml(r.status)}</span>
+      <span>origin ${escapeHtml(originText)}</span>
+      ${r.toolName ? `<span>tool ${escapeHtml(r.toolName)}</span>` : ''}
+      <span>${escapeHtml(startClock)} → ${escapeHtml(endClock)}</span>
+      <span>dur ${escapeHtml(durStr)}</span>
+      ${r.formattedCost ? `<span>ctx ${escapeHtml(r.formattedCost)}</span>` : ''}
+    </div>
+    ${debugHtml}
+  </div>`
 }
 
 function renderFeed(feedEl: HTMLElement, s: WebviewStateMessage): void {
+  const isDetailed = s.detailLevel !== 'compact'
+  feedEl.classList.toggle('is-detailed', isDetailed)
+
   if (s.rows.length === 0) {
     feedEl.innerHTML = `<div class="feed-empty">${escapeHtml(s.strings.nothingYet)}</div>`
     return
@@ -346,37 +558,40 @@ function renderFeed(feedEl: HTMLElement, s: WebviewStateMessage): void {
       if (r.formattedTime === '—') cls.push('is-moment')
       const isOpen = r.isLong && openRowId === r.id
       if (isOpen) cls.push('is-open')
+      const isCardOpen = isDetailed && selectedStepId === r.id
+      if (isDetailed) cls.push('is-clickable')
+      if (isCardOpen) cls.push('is-card-open')
 
-      const timesHtml = r.times > 1 ? `<span class="row-times">+${r.times - 1}</span>` : ''
-      const expandHtml = r.isLong
-        ? `<button class="row-expand" data-row-id="${escapeHtml(r.id)}" type="button">${isOpen ? '▾' : '▸'}</button>`
+      const tsHtml = isDetailed
+        ? `<span class="row-ts">${escapeHtml(formatClockTime(r.startedAt))}${r.stepIdx !== undefined ? ` #${escapeHtml(String(r.stepIdx))}` : ''}</span>`
         : ''
+      const toolHtml = isDetailed && r.toolName && r.toolName !== r.label ? `<span class="row-tool">${escapeHtml(r.toolName)}</span>` : ''
+      const timesHtml = r.times > 1 ? `<span class="row-times">+${r.times - 1}</span>` : ''
+      const expandHtml =
+        !isDetailed && r.isLong
+          ? `<button class="row-expand" data-row-id="${escapeHtml(r.id)}" type="button">${isOpen ? '▾' : '▸'}</button>`
+          : ''
       const timeText =
         r.isRunning && s.replay.isLive
           ? formatLiveDuration(r.startedAt, s.strings.msUnit, s.strings.secUnit)
           : r.formattedTime
       const metaText = `${timeText}${r.formattedCost ? ` ${r.formattedCost}` : ''}`
+      const cardHtml = isCardOpen ? renderStepCard(r, s) : ''
 
-      return `<div class="${cls.join(' ')}" data-started="${r.startedAt}" data-running="${r.isRunning && s.replay.isLive ? '1' : '0'}" data-cost="${escapeHtml(r.formattedCost)}">
+      return `<div class="${cls.join(' ')}" data-row-id="${escapeHtml(r.id)}" data-started="${r.startedAt}" data-running="${r.isRunning && s.replay.isLive ? '1' : '0'}" data-cost="${escapeHtml(r.formattedCost)}">
         <div class="row-main">
           <span class="row-mark">${mark}</span>
+          ${tsHtml}
           <span class="row-station">${escapeHtml(r.stationName)}</span>
+          ${toolHtml}
           <span class="row-label">${escapeHtml(r.label)}</span>
           ${timesHtml}
         </div>
         ${expandHtml}
         <span class="row-meta">${escapeHtml(metaText)}</span>
-      </div>`
+      </div>${cardHtml}`
     })
     .join('')
-
-  feedEl.querySelectorAll<HTMLButtonElement>('.row-expand').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.rowId
-      openRowId = openRowId === id ? undefined : id
-      if (state) renderFeed(feedEl, state)
-    })
-  })
 }
 
 function render(s: WebviewStateMessage): void {
@@ -384,6 +599,7 @@ function render(s: WebviewStateMessage): void {
   if (sessionKey !== lastSessionKey) {
     lastSessionKey = sessionKey
     openRowId = undefined
+    selectedStepId = undefined
   }
   state = s
   applyThemeVars(s)
@@ -410,6 +626,29 @@ function render(s: WebviewStateMessage): void {
     }
   }
   ui.select.value = selectedVal
+
+  const detailTitles: Record<DetailLevel, string> = {
+    compact: s.strings.detailCompact,
+    verbose: s.strings.detailVerbose,
+    debug: s.strings.detailDebug,
+  }
+  ui.detailGroup.querySelectorAll<HTMLButtonElement>('.btn-detail').forEach(btn => {
+    const level = btn.dataset.detail as DetailLevel | undefined
+    if (!level) return
+    const locked = level === 'debug' && !s.canDebug
+    btn.disabled = locked
+    btn.title = locked ? `${detailTitles.debug} (Trusted Workspace required)` : (detailTitles[level] ?? level)
+    btn.classList.toggle('is-active', s.detailLevel === level && level !== 'debug')
+    btn.classList.toggle('is-debug-active', s.detailLevel === 'debug' && level === 'debug')
+  })
+
+  if (s.detailLevel === 'debug') {
+    ui.debugBanner.style.display = 'flex'
+    ui.debugBanner.innerHTML = `<span>${escapeHtml(s.strings.debugWarning)}</span><button type="button" class="debug-banner-close" id="ag-debug-close" title="${escapeHtml(s.strings.detailVerbose)}">×</button>`
+  } else {
+    ui.debugBanner.style.display = 'none'
+    ui.debugBanner.innerHTML = ''
+  }
 
   ui.btnZoomOut.title = s.strings.zoomOut
   ui.btnZoomIn.title = s.strings.zoomIn
@@ -446,6 +685,8 @@ function render(s: WebviewStateMessage): void {
   ui.nowMeter.textContent = s.nowMeter
 
   renderBreakdown(ui.breakdownWrap, s)
+  renderTelemetry(ui.telemetryWrap, s)
+  renderTurns(ui.turnsWrap, s)
   renderInspector(ui.inspectorWrap, s)
   renderFeed(ui.feed, s)
 }

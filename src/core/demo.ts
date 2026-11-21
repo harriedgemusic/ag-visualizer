@@ -78,8 +78,9 @@ export const DEMO_TIMELINE: readonly DemoItem[] = [
       input_tokens: 72_000,
       cache_read_tokens: 46_000,
       output_tokens: 410,
+      thinking: 'Need to inspect store.ts around cache invalidation and search for existing TTL constants before spawning the audit subagent.',
       tool_calls: [
-        { name: 'read_file', args: { Path: '"/Users/dev/project/src/cache/store.ts"' } },
+        { name: 'read_file', args: { Path: '"/Users/dev/project/src/cache/store.ts"', StartLine: 12, EndLine: 48 } },
         { name: 'grep_search', args: { Query: '"SECRET_CACHE_TOKEN"', SearchPath: '"/Users/dev/project/src"' } },
         { name: 'search_web', args: { query: '"stale-while-revalidate typescript patterns"' } },
       ],

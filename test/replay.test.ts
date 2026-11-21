@@ -418,4 +418,24 @@ describe('time-travel replay', () => {
     assert.ok(!JSON.stringify(frame).includes(CANARY))
     assert.equal(frame.board.entries.length, 1)
   })
+
+  it('slices modelSteps cleanly to renderNow without mutating frozen source board', () => {
+    const board = deepFreeze<Board>({
+      entries: [
+        { id: '1', station: 'files', label: 'a.ts', status: 'ok', from: 'core', startedAt: t0, endedAt: t0 + 100, debug: { args: 'Path=/a.ts' } },
+        { id: '2', station: 'shell', label: 'npm test', status: 'ok', from: 'core', startedAt: t0 + 1000, endedAt: t0 + 1200 },
+      ],
+      counts: { files: 1, shell: 1 },
+      modelSteps: [
+        { at: t0, inputTokens: 10_000, cacheReadTokens: 10_000, outputTokens: 100, totalContextTokens: 20_000, cacheHitPct: 50 },
+        { at: t0 + 1000, inputTokens: 20_000, cacheReadTokens: 30_000, outputTokens: 200, totalContextTokens: 50_000, cacheHitPct: 60 },
+      ],
+    })
+    const snapshot = JSON.stringify(board)
+    const f1 = sliceBoardAt(board, 1)
+    assert.equal(f1.board.modelSteps?.length, 1)
+    f1.board.modelSteps?.push({ at: 999, inputTokens: 1, cacheReadTokens: 1, outputTokens: 1, totalContextTokens: 2, cacheHitPct: 50 })
+    if (f1.board.entries[0]?.debug) f1.board.entries[0].debug.args = 'mutated'
+    assert.equal(JSON.stringify(board), snapshot)
+  })
 })

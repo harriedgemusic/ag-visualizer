@@ -2,7 +2,7 @@ import { COLOR_NAMES } from './palette'
 import type { Palette } from './palette'
 import { stringsFor } from './text'
 import type { Strings } from './text'
-import type { StationId, UserOptions } from './types'
+import type { DetailLevel, StationId, UserOptions } from './types'
 
 function ring(x: number, y: number, r: number): string {
   return `M${x - r} ${y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`
@@ -40,6 +40,7 @@ export type Setup = {
   layout: 'you-top' | 'you-bottom'
   motion: 'full' | 'reduced'
   textSize: 'caption' | 'footnote' | 'body'
+  detailLevel: DetailLevel
 }
 
 const SERVER_STATIONS: readonly StationId[] = ['files', 'shell', 'web', 'browser', 'agents', 'skills', 'you']
@@ -133,5 +134,6 @@ export function setupFrom(options: UserOptions & Readonly<Record<string, unknown
     layout: options.layout === 'you-bottom' ? 'you-bottom' : 'you-top',
     motion: options.motion === 'reduced' ? 'reduced' : 'full',
     textSize: options.textSize === 'caption' || options.textSize === 'body' ? options.textSize : 'footnote',
+    detailLevel: options.detailLevel === 'verbose' || options.detailLevel === 'debug' ? options.detailLevel : 'compact',
   }
 }

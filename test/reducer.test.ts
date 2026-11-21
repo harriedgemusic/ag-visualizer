@@ -287,4 +287,28 @@ describe('TranscriptReducer', () => {
     assert.equal(reducer.settleAllRunning(Date.parse('2026-11-21T12:00:12Z')), true)
     assert.equal(reducer.board().entries.filter(e => e.status === 'run').length, 0)
   })
+
+  it('records bounded modelSteps telemetry including cache hit % and checkpoints', () => {
+    const setup = setupFrom({ language: 'en', detailLevel: 'verbose' })
+    const steps: TranscriptStep[] = []
+    for (let i = 0; i < 65; i++) {
+      steps.push({
+        step_index: i + 1,
+        type: i === 64 ? 'CHECKPOINT' : 'PLANNER_RESPONSE',
+        status: 'DONE',
+        created_at: new Date(1_763_720_000_000 + i * 1000).toISOString(),
+        model: 'gemini-4-neon-high',
+        input_tokens: 10_000,
+        cache_read_tokens: 40_000,
+        output_tokens: 250,
+        tool_calls: i === 64 ? undefined : [],
+      })
+    }
+    const board = reduceTranscript(steps, setup)
+    assert.equal(board.modelSteps?.length, 60)
+    const last = board.modelSteps?.[59]
+    assert.equal(last?.isCompaction, true)
+    assert.equal(last?.totalContextTokens, 50_000)
+    assert.equal(last?.cacheHitPct, 80)
+  })
 })

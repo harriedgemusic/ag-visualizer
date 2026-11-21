@@ -1,11 +1,41 @@
 import { classifyTool, clean, shortModel, unwrapValue } from './classify'
 import { charged, stepCosts } from './cost'
 import type { Setup } from './setup'
-import type { Board, Entry, RawToolCall, StationId, SubagentInfo, TranscriptStep } from './types'
+import type { Board, Entry, EntryDebugPreview, ModelStepTelemetry, RawToolCall, StationId, SubagentInfo, TranscriptStep } from './types'
 
 const KEEP = 80
 const MAX_AGENTS = 12
+const MAX_MODEL_STEPS = 60
 const METADATA_SCAN_LIMIT = 600
+const DEBUG_PREVIEW_MAX = 240
+const DEBUG_RAW_SLICE = 600
+const DEBUG_RESULT_SCAN = 1200
+
+const PRIORITY_ARG_KEYS = [
+  'CommandLine',
+  'command',
+  'Path',
+  'TargetFile',
+  'AbsolutePath',
+  'DirectoryPath',
+  'File',
+  'file_path',
+  'Url',
+  'url',
+  'Query',
+  'query',
+  'Pattern',
+  'SearchPath',
+  'SearchDirectory',
+  'Action',
+  'action',
+  'TaskId',
+  'Role',
+  'TypeName',
+  'Name',
+  'Description',
+  'Prompt',
+] as const
 
 type OriginPushOptions = {
   from?: 'core' | 'agents'
@@ -31,6 +61,99 @@ export function contextWindowFor(model: string | undefined, overrideTokens = 0):
   return 1_000_000
 }
 
+function nonNegInt(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v) : 0
+}
+
+function appendModelStep(board: Board, telemetry: ModelStepTelemetry): ModelStepTelemetry[] {
+  return [...(board.modelSteps ?? []), telemetry].slice(-MAX_MODEL_STEPS)
+}
+
+function unwrapBoundedString(v: unknown): string {
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : ''
+  if (typeof v === 'boolean') return String(v)
+  if (typeof v !== 'string') return ''
+  const sliced = v.slice(0, DEBUG_RAW_SLICE)
+  const trimmed = sliced.trim()
+  if (trimmed.startsWith('"')) {
+    const unwrapped = unwrapValue(trimmed)
+    return typeof unwrapped === 'string' ? unwrapped : sliced
+  }
+  return sliced
+}
+
+function extractLineRange(args: Record<string, unknown>): string | undefined {
+  const rawStartInput = args.StartLine ?? args.start_line
+  const rawEndInput = args.EndLine ?? args.end_line
+  const rawStart =
+    typeof rawStartInput === 'number' || (typeof rawStartInput === 'string' && rawStartInput.length <= 32)
+      ? unwrapValue(rawStartInput)
+      : undefined
+  const rawEnd =
+    typeof rawEndInput === 'number' || (typeof rawEndInput === 'string' && rawEndInput.length <= 32)
+      ? unwrapValue(rawEndInput)
+      : undefined
+  const start =
+    typeof rawStart === 'number' && Number.isFinite(rawStart) && rawStart > 0 ? Math.round(rawStart) : undefined
+  const end =
+    typeof rawEnd === 'number' && Number.isFinite(rawEnd) && rawEnd > 0 ? Math.round(rawEnd) : undefined
+  if (start !== undefined && end !== undefined) {
+    return clean(`L${start}-L${Math.max(start, end)}`, 32)
+  }
+  if (start !== undefined) return clean(`L${start}`, 32)
+  if (end !== undefined) return clean(`L${end}`, 32)
+  return undefined
+}
+
+function extractDebugArgs(args: Record<string, unknown>): string | undefined {
+  const parts: string[] = []
+  for (const key of PRIORITY_ARG_KEYS) {
+    if (!Object.hasOwn(args, key) || args[key] === undefined) continue
+    const val = clean(unwrapBoundedString(args[key]), 180)
+    if (val) {
+      parts.push(`${key}=${val}`)
+      if (parts.length >= 3) break
+    }
+  }
+  if (parts.length === 0) {
+    for (const [key, raw] of Object.entries(args)) {
+      if (raw === undefined || raw === null) continue
+      if (typeof raw !== 'string' && typeof raw !== 'number' && typeof raw !== 'boolean') continue
+      const val = clean(unwrapBoundedString(raw), 80)
+      if (val) {
+        parts.push(`${clean(key, 32)}=${val}`)
+        if (parts.length >= 3) break
+      }
+    }
+  }
+  if (parts.length === 0) return undefined
+  const joined = clean(parts.join(' · '), DEBUG_PREVIEW_MAX)
+  return joined || undefined
+}
+
+function extractDebugResult(content: string | undefined): string | undefined {
+  if (typeof content !== 'string' || !content) return undefined
+  const scan = content.slice(0, DEBUG_RESULT_SCAN)
+  const lines = scan.split('\n')
+  let idx = 0
+  while (idx < lines.length && idx < 6) {
+    const trimmed = lines[idx]!.trim()
+    if (trimmed.startsWith('Created At:') || trimmed.startsWith('Completed At:') || trimmed === '') {
+      idx++
+    } else {
+      break
+    }
+  }
+  const body = clean(lines.slice(idx).join('\n').slice(0, DEBUG_RAW_SLICE), DEBUG_PREVIEW_MAX)
+  return body || undefined
+}
+
+function extractDebugText(raw: unknown): string | undefined {
+  if (typeof raw !== 'string' || !raw) return undefined
+  const cleaned = clean(raw.slice(0, DEBUG_RAW_SLICE), DEBUG_PREVIEW_MAX)
+  return cleaned || undefined
+}
+
 function parseIsoMs(raw: string | undefined, fallback: number): number {
   if (!raw) return fallback
   const ms = Date.parse(raw)
@@ -43,7 +166,7 @@ function parseGenericMetadata(content: string | undefined): {
   startedBgTaskId?: string
   cancelledBgTaskId?: string
 } {
-  if (!content) return {}
+  if (typeof content !== 'string' || !content) return {}
   const head = content.slice(0, METADATA_SCAN_LIMIT)
   const lines = head.split('\n').slice(0, 6)
   let createdAt: number | undefined
@@ -117,9 +240,18 @@ export class TranscriptReducer {
 
   updateSetup(setup: Setup): void {
     const costToggled = setup.contextCost !== this._setup.contextCost
+    const leavingDebug = this._setup.detailLevel === 'debug' && setup.detailLevel !== 'debug'
     this._setup = setup
     if (costToggled) {
       this._costs = stepCosts(setup.contextCost)
+    }
+    if (leavingDebug && this._board.entries.some(e => e.debug !== undefined)) {
+      const entries = this._board.entries.map(e => {
+        if (e.debug === undefined) return e
+        const { debug: _debug, ...rest } = e
+        return rest
+      })
+      this._board = { ...this._board, entries }
     }
   }
 
@@ -230,11 +362,17 @@ export class TranscriptReducer {
     const { t } = this._setup
     const stepType = step.type ?? ''
     const stepStatus = step.status ?? ''
+    const isDebug = this._setup.detailLevel === 'debug'
+    const stepIdx =
+      typeof step.step_index === 'number' && Number.isFinite(step.step_index) && step.step_index >= 0
+        ? Math.round(step.step_index)
+        : undefined
 
     if (stepType === 'USER_INPUT') {
       this._pendingByOrigin.set('core', [])
       this.clearStepKeysForOrigin('core')
       this.settleOrphanedCore(stepTime)
+      const promptPreview = isDebug ? extractDebugText(step.content) : undefined
       this._board = {
         ...appendEntry(this._board, {
           id: this.nextId('you'),
@@ -244,7 +382,8 @@ export class TranscriptReducer {
           from: 'inbound',
           startedAt: stepTime,
           endedAt: stepTime,
-          stepIdx: step.step_index,
+          stepIdx,
+          ...(promptPreview ? { debug: { args: promptPreview } } : {}),
         }),
         faults: {},
       }
@@ -253,11 +392,26 @@ export class TranscriptReducer {
 
     if (stepType === 'CHECKPOINT') {
       if (!isSubagentStep) this._costs.compacted()
-      const total = (step.input_tokens ?? 0) + (step.cache_read_tokens ?? 0)
+      const inTok = nonNegInt(step.input_tokens)
+      const cacheTok = nonNegInt(step.cache_read_tokens)
+      const outTok = nonNegInt(step.output_tokens)
+      const total = inTok + cacheTok
       const pct =
         !isSubagentStep && total > 0
           ? Math.min(100, Math.round((total / contextWindowFor(this._board.model, this._setup.contextWindowTokens)) * 100))
           : this._board.context
+      const modelSteps =
+        !isSubagentStep && (inTok > 0 || cacheTok > 0)
+          ? appendModelStep(this._board, {
+              at: stepTime,
+              inputTokens: inTok,
+              cacheReadTokens: cacheTok,
+              outputTokens: outTok,
+              totalContextTokens: total,
+              cacheHitPct: total > 0 ? Math.min(100, Math.round((cacheTok / total) * 100)) : 0,
+              isCompaction: true,
+            })
+          : undefined
       this._board = {
         ...appendEntry(this._board, {
           id: this.nextId('ckpt'),
@@ -267,9 +421,10 @@ export class TranscriptReducer {
           from: isSubagentStep ? 'agents' : 'core',
           startedAt: stepTime,
           endedAt: stepTime,
-          stepIdx: step.step_index,
+          stepIdx,
         }),
         ...(pct !== undefined ? { context: pct } : {}),
+        ...(modelSteps !== undefined ? { modelSteps } : {}),
       }
       return
     }
@@ -303,13 +458,14 @@ export class TranscriptReducer {
         from: 'inbound',
         startedAt: stepTime,
         endedAt: stepTime,
-        stepIdx: step.step_index,
+        stepIdx,
       })
       return
     }
 
     if (stepType === 'ERROR_MESSAGE') {
       const faults = { ...this._board.faults, model: (this._board.faults?.model ?? 0) + 1 }
+      const errPreview = isDebug ? extractDebugText(step.error ?? step.content) : undefined
       this._board = {
         ...appendEntry(this._board, {
           id: this.nextId('err'),
@@ -319,7 +475,8 @@ export class TranscriptReducer {
           from: isSubagentStep ? 'agents' : 'core',
           startedAt: stepTime,
           endedAt: stepTime,
-          stepIdx: step.step_index,
+          stepIdx,
+          ...(errPreview ? { debug: { error: errPreview } } : {}),
         }),
         faults,
       }
@@ -329,7 +486,10 @@ export class TranscriptReducer {
     if (stepType === 'PLANNER_RESPONSE') {
       const rawModel = typeof step.model === 'string' && step.model.trim() !== '' ? clean(step.model, 80) : undefined
       const model = rawModel && rawModel !== '' ? rawModel : undefined
-      const totalTokens = (step.input_tokens ?? 0) + (step.cache_read_tokens ?? 0)
+      const inTok = nonNegInt(step.input_tokens)
+      const cacheTok = nonNegInt(step.cache_read_tokens)
+      const outTok = nonNegInt(step.output_tokens)
+      const totalTokens = inTok + cacheTok
 
       if (!isSubagentStep) {
         const answered = this._costs.stepStarted()
@@ -340,20 +500,20 @@ export class TranscriptReducer {
 
         if (model !== undefined) {
           if (this._board.model !== undefined && this._board.model !== model) {
-            this._board = {
-              ...appendEntry(this._board, {
-                id: this.nextId('switch'),
-                station: 'model',
-                label: shortModel(model),
-                status: 'ok',
-                mark: 'switch',
-                startedAt: stepTime,
-                endedAt: stepTime,
-                stepIdx: step.step_index,
-              }),
-              model,
-              switchedAt: stepTime,
-            }
+              this._board = {
+                ...appendEntry(this._board, {
+                  id: this.nextId('switch'),
+                  station: 'model',
+                  label: shortModel(model),
+                  status: 'ok',
+                  mark: 'switch',
+                  startedAt: stepTime,
+                  endedAt: stepTime,
+                  stepIdx,
+                }),
+                model,
+                switchedAt: stepTime,
+              }
           } else {
             this._board = { ...this._board, model }
           }
@@ -365,8 +525,21 @@ export class TranscriptReducer {
           this._board = { ...this._board, context: pct }
           this._sawFirstContext = true
         }
+
+        if (inTok > 0 || cacheTok > 0 || outTok > 0) {
+          const modelSteps = appendModelStep(this._board, {
+            at: stepTime,
+            inputTokens: inTok,
+            cacheReadTokens: cacheTok,
+            outputTokens: outTok,
+            totalContextTokens: totalTokens,
+            cacheHitPct: totalTokens > 0 ? Math.min(100, Math.round((cacheTok / totalTokens) * 100)) : 0,
+          })
+          this._board = { ...this._board, modelSteps }
+        }
       }
 
+      const thinkingPreview = isDebug ? extractDebugText(step.thinking) : undefined
       const calls = parseToolCalls(step.tool_calls)
       if (calls.length === 0) {
         if (!isSubagentStep && stepStatus === 'DONE') {
@@ -381,16 +554,19 @@ export class TranscriptReducer {
             mark: 'done',
             startedAt: stepTime,
             endedAt: stepTime,
-            stepIdx: step.step_index,
+            stepIdx,
+            ...(thinkingPreview ? { debug: { thinking: thinkingPreview } } : {}),
           })
         }
         return
       }
 
       const queue = this._pendingByOrigin.get(origin) ?? []
-      for (const tc of calls) {
+      for (let callIdx = 0; callIdx < calls.length; callIdx++) {
+        const tc = calls[callIdx]
+        if (!tc || typeof tc !== 'object' || Array.isArray(tc)) continue
         const name = typeof tc.name === 'string' ? clean(tc.name, 64) || 'tool' : 'tool'
-        const args = tc.args && typeof tc.args === 'object' ? tc.args : {}
+        const args = tc.args && typeof tc.args === 'object' && !Array.isArray(tc.args) ? tc.args : {}
         const classified = classifyTool(name, args, this._setup)
         const id = this.nextId('call')
         const subName =
@@ -398,6 +574,20 @@ export class TranscriptReducer {
             ? clean(opts.subagentLabel, 40)
             : undefined
         const label = subName ? `${subName}: ${classified.label}` : classified.label
+
+        let debug: EntryDebugPreview | undefined
+        if (isDebug) {
+          const argsPreview = extractDebugArgs(args)
+          const lineRange = extractLineRange(args)
+          const thinking = callIdx === 0 ? thinkingPreview : undefined
+          if (argsPreview || lineRange || thinking) {
+            debug = {
+              ...(argsPreview ? { args: argsPreview } : {}),
+              ...(lineRange ? { lineRange } : {}),
+              ...(thinking ? { thinking } : {}),
+            }
+          }
+        }
 
         this._board = appendEntry(this._board, {
           id,
@@ -408,7 +598,9 @@ export class TranscriptReducer {
           startedAt: stepTime,
           agentId: opts.agentId,
           agentName: subName,
+          stepIdx,
           toolName: name,
+          ...(debug ? { debug } : {}),
         })
 
         if (!isSubagentStep) {
@@ -453,7 +645,7 @@ export class TranscriptReducer {
         this._board = updateEntry(this._board, bgEntryId, { status: 'ok', endedAt: bgEndedAt })
       }
 
-      const stepKey = step.step_index !== undefined ? `${origin}:step:${step.step_index}` : undefined
+      const stepKey = stepIdx !== undefined ? `${origin}:step:${stepIdx}` : undefined
       let target = stepKey ? this._stepEntryByOrigin.get(stepKey) : undefined
       if (target === undefined) {
         const queue = this._pendingByOrigin.get(origin)
@@ -468,6 +660,21 @@ export class TranscriptReducer {
       const isErr = stepStatus === 'ERROR' || (typeof step.error === 'string' && step.error.trim() !== '')
       const isRunning = stepStatus === 'RUNNING' && !isErr
 
+      let debugPatch: EntryDebugPreview | undefined
+      if (isDebug) {
+        const prevDebug = this._board.entries.find(e => e.id === target!.entryId)?.debug
+        const errPreview = extractDebugText(step.error)
+        const resPreview = extractDebugResult(step.content)
+        if (prevDebug || errPreview || resPreview) {
+          const merged: EntryDebugPreview = {
+            ...(prevDebug ?? {}),
+            ...(resPreview ? { result: resPreview } : {}),
+            ...(errPreview ? { error: errPreview } : {}),
+          }
+          if (Object.keys(merged).length > 0) debugPatch = merged
+        }
+      }
+
       if (isRunning) {
         if (meta.startedBgTaskId) {
           this._bgTasks.set(meta.startedBgTaskId, target.entryId)
@@ -476,7 +683,8 @@ export class TranscriptReducer {
           status: 'run',
           startedAt,
           endedAt: undefined,
-          stepIdx: step.step_index,
+          stepIdx,
+          ...(debugPatch ? { debug: debugPatch } : {}),
         })
         return
       }
@@ -501,7 +709,8 @@ export class TranscriptReducer {
           status,
           startedAt,
           endedAt,
-          stepIdx: step.step_index,
+          stepIdx,
+          ...(debugPatch ? { debug: debugPatch } : {}),
         }),
         ...(faults !== undefined ? { faults } : {}),
         ...(agents !== undefined ? { agents } : {}),

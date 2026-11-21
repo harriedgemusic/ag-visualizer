@@ -39,7 +39,7 @@ const indexOf = (id: StationId): number => STATIONS.findIndex(s => s.id === id)
 const n1 = (v: number): string => (Math.round(v * 10) / 10).toString()
 const clock = (ms: number): string => `${(ms / 1000).toFixed(3)}s`
 
-function escapeXml(text: string): string {
+export function escapeXml(text: string): string {
   return text.replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[c] ?? c)
 }
 
@@ -264,7 +264,22 @@ export function drawMap(
 ): string {
   const shortModelFn = helpers.shortModel ?? shortModel
   const formatTokensFn = helpers.formatTokens ?? formatTokens
-  const c: Palette = { ...(setup.theme === 'light' ? LIGHT : DARK), ...setup.colors }
+  const rawC: Palette = { ...(setup.theme === 'light' ? LIGHT : DARK), ...setup.colors }
+  const c: Palette = {
+    ground: escapeXml(rawC.ground),
+    raised: escapeXml(rawC.raised),
+    line: escapeXml(rawC.line),
+    spoke: escapeXml(rawC.spoke),
+    bone: escapeXml(rawC.bone),
+    ash: escapeXml(rawC.ash),
+    dim: escapeXml(rawC.dim),
+    accent: escapeXml(rawC.accent),
+    hot: escapeXml(rawC.hot),
+    red: escapeXml(rawC.red),
+    mem: escapeXml(rawC.mem),
+    memHot: escapeXml(rawC.memHot),
+    trail: escapeXml(rawC.trail),
+  }
   const shift = setup.layout === 'you-bottom' ? STATIONS.length / 2 : 0
   const core: Point = { x: CX, y: CY }
   const tail40 = board.entries.slice(-40)

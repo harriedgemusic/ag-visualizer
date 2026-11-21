@@ -2,7 +2,7 @@
   "name": "ag-visualizer",
   "displayName": "Antigravity Work Map",
   "description": "A calm, passive, privacy-first live visual map of Antigravity IDE agent activity.",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "publisher": "ag-visualizer",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -137,6 +137,14 @@
           "enum": ["caption", "footnote", "body"],
           "default": "footnote",
           "description": "Font size scale for the activity feed under the map."
+        },
+        "agVisualizer.detailLevel": {
+          "type": "string",
+          "enum": ["compact", "verbose", "debug"],
+          "default": "compact",
+          "scope": "application",
+          "restricted": true,
+          "description": "Level of detail shown in the Work Map panel. 'debug' displays truncated raw arguments, errors, and thinking on screen (opt-in only)."
         },
         "agVisualizer.subagentNames": {
           "type": "boolean",

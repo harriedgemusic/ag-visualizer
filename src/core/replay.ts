@@ -31,6 +31,10 @@ export function turnIndices(entries: readonly Entry[]): number[] {
   return indices
 }
 
+function cloneDebug(debug: Entry['debug']): Entry['debug'] {
+  return debug ? { ...debug } : undefined
+}
+
 /**
  * Produces a non-mutating historical or live board snapshot at 1-based entry cursor `index`.
  * `index === undefined` or `index >= board.entries.length` returns the live board frame.
@@ -93,11 +97,12 @@ export function sliceBoardAt(board: Board, index: number | undefined, liveNow?: 
       e.endedAt !== undefined && e.endedAt > renderNow && e.mark === undefined && e.from !== 'inbound'
 
     let cloned: Entry
+    const debug = cloneDebug(e.debug)
     if (isInFlight) {
       const { endedAt: _endedAt, ...rest } = e
-      cloned = { ...rest, status: 'run' }
+      cloned = { ...rest, ...(debug ? { debug } : {}), status: 'run' }
     } else {
-      cloned = { ...e }
+      cloned = { ...e, ...(debug ? { debug } : {}) }
     }
     historicalEntries.push(cloned)
 
@@ -154,6 +159,10 @@ export function sliceBoardAt(board: Board, index: number | undefined, liveNow?: 
   }
 
   const includeFaults = hasFault || sawInboundTurn || board.faults !== undefined
+  const modelSteps =
+    board.modelSteps !== undefined
+      ? board.modelSteps.filter(ms => ms.at <= renderNow).map(ms => ({ ...ms }))
+      : undefined
 
   const historicalBoard: Board = {
     entries: historicalEntries,
@@ -163,6 +172,7 @@ export function sliceBoardAt(board: Board, index: number | undefined, liveNow?: 
     ...(model !== undefined ? { model } : {}),
     ...(switchedAt !== undefined ? { switchedAt } : {}),
     ...(agents !== undefined ? { agents } : {}),
+    ...(modelSteps !== undefined ? { modelSteps } : {}),
   }
 
   return {

@@ -4,13 +4,14 @@ import { computeBreakdown } from '../core/breakdown'
 import { formatMs, formatTokens } from '../core/classify'
 import { DEMO_TIMELINE } from '../core/demo'
 import { drawMap } from '../core/draw'
-import { foldRows, nowParts } from '../core/feed'
+import { foldRows, nowParts, VERBOSE_LIST_ROWS } from '../core/feed'
 import { filterBoardByStation, inspectStation } from '../core/inspector'
 import { resolvePalette } from '../core/palette'
 import { TranscriptReducer } from '../core/reducer'
 import { sliceBoardAt, turnIndices } from '../core/replay'
 import { STATIONS } from '../core/setup'
 import type { Setup } from '../core/setup'
+import { computeTokenStats, computeTurnSummaries, drawContextSparkline } from '../core/telemetry'
 import type { Board, SessionSummary, StationId } from '../core/types'
 import { listSessions, pickAutoSession, resolveAntigravityDirs } from '../watcher/discovery'
 import { TranscriptTailer } from '../watcher/tailer'
@@ -38,8 +39,9 @@ function buildRows(board: Board, setup: Setup, stationFilter?: StationId): FeedR
     }
   }
 
+  const isDetailed = setup.detailLevel !== 'compact'
   const filtered = filterBoardByStation(board, stationFilter)
-  return foldRows(filtered, 16, setup.subagentNames).map(row => {
+  return foldRows(filtered, isDetailed ? VERBOSE_LIST_ROWS : 16, setup.subagentNames, isDetailed).map(row => {
     const e = row.entry
     const whole = turnMs.get(e.id)
     const isRunning = e.endedAt === undefined || e.status === 'run'
@@ -73,6 +75,11 @@ function buildRows(board: Board, setup: Setup, stationFilter?: StationId): FeedR
       formattedCost,
       isLong: e.label.length > LONG_LABEL,
       isRunning,
+      ...(isDetailed && e.stepIdx !== undefined ? { stepIdx: e.stepIdx } : {}),
+      ...(isDetailed && e.toolName !== undefined ? { toolName: e.toolName } : {}),
+      ...(isDetailed && e.from !== undefined ? { from: e.from } : {}),
+      ...(isDetailed && e.agentName !== undefined ? { agentName: e.agentName } : {}),
+      ...(setup.detailLevel === 'debug' && e.debug !== undefined ? { debug: e.debug } : {}),
     }
   })
 }
@@ -96,6 +103,7 @@ class MapController implements vscode.Disposable {
   private _lastSessionFingerprint = ''
   private _selectedStation: StationId | undefined
   private _replayIndex: number | undefined
+  private _sessionDebugOverride = false
   private _statusBar: vscode.StatusBarItem
   private _targets = new Set<vscode.Webview>()
   private _targetDisposables = new Map<vscode.Webview, vscode.Disposable[]>()
@@ -104,7 +112,7 @@ class MapController implements vscode.Disposable {
 
   constructor(context: vscode.ExtensionContext) {
     this._context = context
-    this._setup = buildSetup()
+    this._setup = this.effectiveSetup()
     this._demoReducer = new TranscriptReducer(this._setup)
     this._tailer = new TranscriptTailer(this._setup, () => {
       if (this._mode !== 'demo') this.broadcast()
@@ -121,6 +129,9 @@ class MapController implements vscode.Disposable {
         if (e.affectsConfiguration('agVisualizer')) {
           this.reloadConfig()
         }
+      }),
+      vscode.workspace.onDidGrantWorkspaceTrust(() => {
+        this.reloadConfig()
       }),
       vscode.window.onDidChangeActiveColorTheme(() => {
         this.broadcast()
@@ -149,12 +160,61 @@ class MapController implements vscode.Disposable {
     return this._context.globalState.get<unknown>(VIEW_MODE_KEY, 'svg') === 'braille' ? 'braille' : 'svg'
   }
 
+  private rebuildDemoToCurrentIdx(): void {
+    const count = Math.max(0, Math.min(DEMO_TIMELINE.length, this._demoIdx))
+    this._demoReducer.reset()
+    const firstIso = DEMO_TIMELINE[0]?.step.created_at
+    const t0 = firstIso ? Date.parse(firstIso) : this._demoBaseMs
+    for (let i = 0; i < count; i++) {
+      const item = DEMO_TIMELINE[i]
+      if (!item) continue
+      const rawStep = item.step
+      const stepTime = rawStep.created_at ? Date.parse(rawStep.created_at) : t0
+      const shiftedMs = this._demoBaseMs + (stepTime - t0)
+      const shiftedCreatedAt = new Date(shiftedMs).toISOString()
+      const shiftedContent =
+        rawStep.content && rawStep.type === 'GENERIC'
+          ? rawStep.content
+              .replace(/^Created At: .+$/m, `Created At: ${new Date(shiftedMs - 200).toISOString()}`)
+              .replace(/^Completed At: .+$/m, `Completed At: ${new Date(shiftedMs).toISOString()}`)
+          : rawStep.content
+      this._demoReducer.push(
+        { ...rawStep, created_at: shiftedCreatedAt, content: shiftedContent },
+        {
+          from: item.from,
+          subagentLabel: item.subagentLabel,
+          agentId: item.from === 'agents' ? 'demo-researcher' : undefined,
+          now: shiftedMs,
+        },
+      )
+    }
+  }
+
+  private effectiveSetup(): Setup {
+    const base = buildSetup()
+    if (this._sessionDebugOverride && vscode.workspace.isTrusted) {
+      return { ...base, detailLevel: 'debug' }
+    }
+    return base
+  }
+
   private reloadConfig(): void {
-    this._setup = buildSetup()
-    this._tailer.updateSetup(this._setup)
+    const prevDetail = this._setup.detailLevel
+    this._setup = this.effectiveSetup()
+    this._tailer.updateSetup(this._setup, true)
     this._demoReducer.updateSetup(this._setup)
-    void this.refreshSessions(true)
-    this.broadcast()
+    if (prevDetail !== 'debug' && this._setup.detailLevel === 'debug') {
+      if (this._mode === 'demo') {
+        this.rebuildDemoToCurrentIdx()
+      } else {
+        void this._tailer.reload().catch(() => {
+          // Ignore transient tailer reload errors
+        })
+      }
+    }
+    void this.refreshSessions(true).catch(() => {
+      // Ignore transient discovery errors
+    })
   }
 
   async refreshSessions(forceBroadcast = false): Promise<void> {
@@ -431,6 +491,24 @@ class MapController implements vscode.Disposable {
         }
         this.broadcast()
         break
+      case 'setDetailLevel': {
+        if (msg.detailLevel !== 'compact' && msg.detailLevel !== 'verbose' && msg.detailLevel !== 'debug') return
+        if (msg.detailLevel === 'debug') {
+          if (!vscode.workspace.isTrusted) return
+          this._sessionDebugOverride = true
+          this.reloadConfig()
+          break
+        }
+        this._sessionDebugOverride = false
+        const cfg = vscode.workspace.getConfiguration('agVisualizer')
+        const currentSetting = cfg.get<string>('detailLevel', 'compact')
+        if (currentSetting !== msg.detailLevel) {
+          await cfg.update('detailLevel', msg.detailLevel, vscode.ConfigurationTarget.Global)
+        } else {
+          this.reloadConfig()
+        }
+        break
+      }
       case 'copyMarkdown': {
         const msgState = this.buildStateMessage()
         await vscode.env.clipboard.writeText(msgState.markdownReport)
@@ -485,6 +563,11 @@ class MapController implements vscode.Disposable {
       : undefined
     const parts = nowParts(board, this._setup.t)
     const palette = resolvePalette(this._setup, lightSurface)
+    const includeTelemetry = this._setup.detailLevel !== 'compact'
+    const tokenStats = includeTelemetry ? computeTokenStats(board) : undefined
+    const sparklineSvg =
+      tokenStats && tokenStats.steps > 0 ? drawContextSparkline(tokenStats, palette) : undefined
+    const turnSummaries = includeTelemetry ? computeTurnSummaries(board, this._setup) : undefined
 
     return {
       type: 'state',
@@ -524,9 +607,14 @@ class MapController implements vscode.Disposable {
       theme: this._setup.theme,
       isLightSurface: lightSurface,
       textSize: this._setup.textSize,
+      detailLevel: this._setup.detailLevel,
+      canDebug: vscode.workspace.isTrusted,
       palette,
       hasContext: board.context !== undefined && Number.isFinite(board.context),
       contextPct: board.context !== undefined && Number.isFinite(board.context) ? board.context : undefined,
+      ...(tokenStats ? { tokenStats } : {}),
+      ...(sparklineSvg ? { sparklineSvg } : {}),
+      ...(turnSummaries ? { turnSummaries } : {}),
       strings: {
         title: this._setup.t.title,
         zoomOut: this._setup.t.zoomOut,
@@ -540,6 +628,12 @@ class MapController implements vscode.Disposable {
         contextLabel: this._setup.t.context,
         msUnit: this._setup.t.ms(0).replace(/^0\s*/, ''),
         secUnit: this._setup.t.seconds('0.0').replace(/^0[.,]0\s*/, ''),
+        detailCompact: this._setup.t.detailCompact,
+        detailVerbose: this._setup.t.detailVerbose,
+        detailDebug: this._setup.t.detailDebug,
+        debugWarning: this._setup.t.debugWarning,
+        turnsTitle: this._setup.t.turnsTitle,
+        cacheHit: this._setup.t.cacheHit,
       },
     }
   }
@@ -552,6 +646,7 @@ class MapController implements vscode.Disposable {
     }
     if (running > 0) bits.push(`${running} ${this._setup.t.running}`)
     if (this._mode === 'demo') bits.push(this._setup.t.demoLabel)
+    if (this._setup.detailLevel === 'debug') bits.push('DEBUG')
     this._statusBar.text = `$(pulse) ${bits.join(' · ')}`
   }
 
