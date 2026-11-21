@@ -1,0 +1,203 @@
+{
+  "name": "ag-visualizer",
+  "displayName": "Antigravity Work Map",
+  "description": "A calm, passive, privacy-first live visual map of Antigravity IDE agent activity.",
+  "version": "0.1.0",
+  "publisher": "ag-visualizer",
+  "license": "MIT",
+  "homepage": "https://github.com/harriedgemusic/ag-visualizer",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/harriedgemusic/ag-visualizer"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "antigravity",
+    "agent",
+    "visualizer",
+    "work-map",
+    "lot-map"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ag-visualizer",
+          "title": "Work Map",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "ag-visualizer": [
+        {
+          "type": "webview",
+          "id": "agVisualizer.mapView",
+          "name": "Work Map"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "agVisualizer.openPanel",
+        "title": "Antigravity Work Map: Open Beside Chat",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "agVisualizer.toggleDemo",
+        "title": "Antigravity Work Map: Toggle Demo Mode",
+        "icon": "$(play-circle)"
+      },
+      {
+        "command": "agVisualizer.selectSession",
+        "title": "Antigravity Work Map: Select Conversation",
+        "icon": "$(list-selection)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "agVisualizer.selectSession",
+          "when": "view == agVisualizer.mapView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agVisualizer.toggleDemo",
+          "when": "view == agVisualizer.mapView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agVisualizer.openPanel",
+          "when": "view == agVisualizer.mapView",
+          "group": "navigation@3"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Antigravity Work Map",
+      "properties": {
+        "agVisualizer.language": {
+          "type": "string",
+          "enum": ["auto", "en", "ru", "es", "fr", "de", "it", "pt"],
+          "default": "auto",
+          "description": "Language for station labels and activity feed rows."
+        },
+        "agVisualizer.theme": {
+          "type": "string",
+          "enum": ["auto", "dark", "light"],
+          "default": "auto",
+          "description": "Map color theme. 'auto' follows the active IDE color theme."
+        },
+        "agVisualizer.background": {
+          "type": "string",
+          "enum": ["solid", "transparent"],
+          "default": "solid",
+          "description": "Paint the map's own background or leave the IDE pane surface showing through."
+        },
+        "agVisualizer.layout": {
+          "type": "string",
+          "enum": ["you-top", "you-bottom"],
+          "default": "you-top",
+          "description": "Place 'You' at the top or bottom of the station ring."
+        },
+        "agVisualizer.motion": {
+          "type": "string",
+          "enum": ["full", "reduced"],
+          "default": "full",
+          "description": "Animation style. 'reduced' replaces flying pulses and spins with gentle fades."
+        },
+        "agVisualizer.coreName": {
+          "type": "string",
+          "default": "AGY",
+          "description": "Short label shown inside the central core node (up to 12 characters)."
+        },
+        "agVisualizer.contextCost": {
+          "type": "boolean",
+          "default": true,
+          "description": "Estimate how many tokens each step added to the context window."
+        },
+        "agVisualizer.contextWindowTokens": {
+          "type": "number",
+          "default": 0,
+          "description": "Override context window denominator in tokens (0 uses model-aware defaults, e.g. 1,000,000 for Gemini)."
+        },
+        "agVisualizer.textSize": {
+          "type": "string",
+          "enum": ["caption", "footnote", "body"],
+          "default": "footnote",
+          "description": "Font size scale for the activity feed under the map."
+        },
+        "agVisualizer.subagentNames": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show short subagent role labels on subagent steps."
+        },
+        "agVisualizer.colors": {
+          "type": "object",
+          "default": {},
+          "description": "Override palette colors by role name (background, node, line, spoke, text, label, faint, accent, active, error, memory, memoryActive, route)."
+        },
+        "agVisualizer.memoryPaths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Additional path fragments classified under the Memory station."
+        },
+        "agVisualizer.memoryServers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "MCP server names classified under the Memory station."
+        },
+        "agVisualizer.memoryCommands": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Shell command names classified under the Memory station."
+        },
+        "agVisualizer.serverStations": {
+          "type": "object",
+          "default": {},
+          "description": "Map MCP server names to specific station IDs."
+        },
+        "agVisualizer.commandStations": {
+          "type": "object",
+          "default": {},
+          "description": "Map shell command names to specific station IDs."
+        },
+        "agVisualizer.antigravityDataDir": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "restricted": true,
+          "description": "Optional override path for Antigravity data directory (defaults to ~/.gemini/antigravity). Application-scoped for security."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "check:surface": "node scripts/check-surface.mjs",
+    "package": "vsce package --no-dependencies --allow-missing-repository",
+    "check": "npm run typecheck && npm run check:surface && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/vscode": "^1.95.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.0"
+  }
+}
