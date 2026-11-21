@@ -12,7 +12,7 @@ import { sliceBoardAt, turnIndices } from '../core/replay'
 import { STATIONS } from '../core/setup'
 import type { Setup } from '../core/setup'
 import { computeTokenStats, computeTurnSummaries, drawContextSparkline } from '../core/telemetry'
-import type { Board, SessionSummary, StationId } from '../core/types'
+import type { Board, DetailLevel, SessionSummary, StationId } from '../core/types'
 import { listSessions, pickAutoSession, resolveAntigravityDirs } from '../watcher/discovery'
 import { TranscriptTailer } from '../watcher/tailer'
 import type { FeedRowPayload, WebviewCommandMessage, WebviewStateMessage } from '../webview/protocol'
@@ -103,7 +103,7 @@ class MapController implements vscode.Disposable {
   private _lastSessionFingerprint = ''
   private _selectedStation: StationId | undefined
   private _replayIndex: number | undefined
-  private _sessionDebugOverride = false
+  private _detailOverride: DetailLevel | undefined
   private _statusBar: vscode.StatusBarItem
   private _targets = new Set<vscode.Webview>()
   private _targetDisposables = new Map<vscode.Webview, vscode.Disposable[]>()
@@ -126,6 +126,9 @@ class MapController implements vscode.Disposable {
     this._disposables.push(
       this._statusBar,
       vscode.workspace.onDidChangeConfiguration(e => {
+        if (e.affectsConfiguration('agVisualizer.detailLevel')) {
+          this._detailOverride = undefined
+        }
         if (e.affectsConfiguration('agVisualizer')) {
           this.reloadConfig()
         }
@@ -192,14 +195,14 @@ class MapController implements vscode.Disposable {
 
   private effectiveSetup(): Setup {
     const base = buildSetup()
-    if (this._sessionDebugOverride && vscode.workspace.isTrusted) {
-      return { ...base, detailLevel: 'debug' }
+    if (this._detailOverride !== undefined) {
+      const next = this._detailOverride === 'debug' && !vscode.workspace.isTrusted ? 'compact' : this._detailOverride
+      return { ...base, detailLevel: next }
     }
     return base
   }
 
-  private reloadConfig(): void {
-    const prevDetail = this._setup.detailLevel
+  private applyDetailLevelChange(prevDetail: DetailLevel): void {
     this._setup = this.effectiveSetup()
     this._tailer.updateSetup(this._setup, true)
     this._demoReducer.updateSetup(this._setup)
@@ -212,6 +215,12 @@ class MapController implements vscode.Disposable {
         })
       }
     }
+    this.broadcast()
+  }
+
+  private reloadConfig(): void {
+    const prevDetail = this._setup.detailLevel
+    this.applyDetailLevelChange(prevDetail)
     void this.refreshSessions(true).catch(() => {
       // Ignore transient discovery errors
     })
@@ -343,6 +352,58 @@ class MapController implements vscode.Disposable {
     const picked = await vscode.window.showQuickPick(items, { placeHolder: this._setup.t.title })
     if (!picked) return
     await this.selectSession(picked.id)
+  }
+
+  async pickDetailLevelQuickPick(): Promise<void> {
+    const cur = this._setup.detailLevel
+    const t = this._setup.t
+    const trusted = vscode.workspace.isTrusted
+    const items: (vscode.QuickPickItem & { id: DetailLevel })[] = [
+      {
+        id: 'compact',
+        label: `${cur === 'compact' ? '$(check) ' : ''}${t.detailCompact}`,
+        description: 'Folded feed (16 rows), minimal chrome',
+      },
+      {
+        id: 'verbose',
+        label: `${cur === 'verbose' ? '$(check) ' : ''}${t.detailVerbose}`,
+        description: 'Unfolded steps, step cards, token sparkline, turn breakdown',
+      },
+      {
+        id: 'debug',
+        label: `${cur === 'debug' ? '$(check) ' : trusted ? '$(bug) ' : '$(lock) '}${t.detailDebug}`,
+        description: trusted
+          ? 'Verbose + truncated args, errors & thinking (session-ephemeral)'
+          : 'Requires a Trusted Workspace',
+      },
+    ]
+    const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Select Work Map detail level' })
+    if (!picked) return
+    await this.setDetailLevel(picked.id)
+  }
+
+  async setDetailLevel(level: DetailLevel): Promise<void> {
+    const prevDetail = this._setup.detailLevel
+    if (level === 'debug') {
+      if (!vscode.workspace.isTrusted) {
+        void vscode.window.showInformationMessage('Debug detail level requires a Trusted Workspace.')
+        return
+      }
+      this._detailOverride = 'debug'
+      this.applyDetailLevelChange(prevDetail)
+      return
+    }
+    this._detailOverride = level
+    this.applyDetailLevelChange(prevDetail)
+    const cfg = vscode.workspace.getConfiguration('agVisualizer')
+    const currentSetting = cfg.get<string>('detailLevel', 'compact')
+    if (currentSetting !== level) {
+      try {
+        await cfg.update('detailLevel', level, vscode.ConfigurationTarget.Global)
+      } catch {
+        // Ephemeral override stays active even if global config write is declined
+      }
+    }
   }
 
   async selectSession(id: string): Promise<void> {
@@ -493,20 +554,7 @@ class MapController implements vscode.Disposable {
         break
       case 'setDetailLevel': {
         if (msg.detailLevel !== 'compact' && msg.detailLevel !== 'verbose' && msg.detailLevel !== 'debug') return
-        if (msg.detailLevel === 'debug') {
-          if (!vscode.workspace.isTrusted) return
-          this._sessionDebugOverride = true
-          this.reloadConfig()
-          break
-        }
-        this._sessionDebugOverride = false
-        const cfg = vscode.workspace.getConfiguration('agVisualizer')
-        const currentSetting = cfg.get<string>('detailLevel', 'compact')
-        if (currentSetting !== msg.detailLevel) {
-          await cfg.update('detailLevel', msg.detailLevel, vscode.ConfigurationTarget.Global)
-        } else {
-          this.reloadConfig()
-        }
+        await this.setDetailLevel(msg.detailLevel)
         break
       }
       case 'copyMarkdown': {
@@ -712,6 +760,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('agVisualizer.openPanel', () => controller.openPanel()),
     vscode.commands.registerCommand('agVisualizer.toggleDemo', () => controller.toggleDemo()),
     vscode.commands.registerCommand('agVisualizer.selectSession', () => controller.pickSessionQuickPick()),
+    vscode.commands.registerCommand('agVisualizer.selectDetailLevel', () => controller.pickDetailLevelQuickPick()),
   )
 }
 

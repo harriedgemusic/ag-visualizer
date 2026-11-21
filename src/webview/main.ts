@@ -129,11 +129,6 @@ function ensureShell(): {
       <div class="toolbar shell-ready">
         <select class="session-select" id="ag-session"></select>
         <div class="controls">
-          <div class="detail-group" id="ag-detail-group">
-            <button class="btn-detail" data-detail="compact" type="button">C</button>
-            <button class="btn-detail" data-detail="verbose" type="button">V</button>
-            <button class="btn-detail" data-detail="debug" type="button">D</button>
-          </div>
           <button class="btn" id="ag-zoom-out" type="button">−</button>
           <button class="btn" id="ag-zoom-in" type="button">+</button>
           <button class="btn" id="ag-layout" type="button">⇅</button>
@@ -141,6 +136,11 @@ function ensureShell(): {
           <button class="btn" id="ag-copy" type="button" title="Copy Markdown Snapshot">📋</button>
           <button class="btn" id="ag-hide" type="button">▾</button>
         </div>
+      </div>
+      <div class="detail-bar" id="ag-detail-group" role="group" aria-label="Detail level">
+        <button class="btn-detail" data-detail="compact" type="button">Compact</button>
+        <button class="btn-detail" data-detail="verbose" type="button">Verbose</button>
+        <button class="btn-detail" data-detail="debug" type="button">Debug</button>
       </div>
       <div class="debug-banner" id="ag-debug-banner" style="display:none"></div>
       <div class="map-wrap" id="ag-map-wrap">
@@ -636,8 +636,11 @@ function render(s: WebviewStateMessage): void {
     const level = btn.dataset.detail as DetailLevel | undefined
     if (!level) return
     const locked = level === 'debug' && !s.canDebug
+    const label = detailTitles[level] ?? level
     btn.disabled = locked
-    btn.title = locked ? `${detailTitles.debug} (Trusted Workspace required)` : (detailTitles[level] ?? level)
+    btn.textContent = locked ? `🔒 ${label}` : label
+    btn.setAttribute('aria-pressed', String(s.detailLevel === level))
+    btn.title = locked ? `${detailTitles.debug} (Trusted Workspace required)` : label
     btn.classList.toggle('is-active', s.detailLevel === level && level !== 'debug')
     btn.classList.toggle('is-debug-active', s.detailLevel === 'debug' && level === 'debug')
   })

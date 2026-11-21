@@ -84,6 +84,7 @@ export function getWebviewHtml(
       align-items: center;
       gap: 4px;
       flex-shrink: 0;
+      flex-wrap: wrap;
     }
     .btn {
       height: 24px;
@@ -254,25 +255,31 @@ export function getWebviewHtml(
       border-color: var(--ag-accent);
       color: var(--ag-accent);
     }
-    .detail-group {
-      display: inline-flex;
-      align-items: center;
+    .detail-bar {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      width: 100%;
       border: 1px solid var(--ag-border);
-      border-radius: 5px;
+      border-radius: 6px;
       overflow: hidden;
+      background: rgba(128, 128, 128, 0.06);
     }
     .btn-detail {
-      height: 22px;
-      min-width: 21px;
-      padding: 0 5px;
+      height: 26px;
+      min-width: 0;
+      padding: 0 6px;
       border: none;
       border-right: 1px solid var(--ag-border);
       border-radius: 0;
       background: transparent;
       color: var(--ag-dim);
       font-family: inherit;
-      font-size: 10.5px;
+      font-size: 11px;
       cursor: pointer;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      transition: background 120ms ease, color 120ms ease;
     }
     .btn-detail:last-child {
       border-right: none;
@@ -286,7 +293,7 @@ export function getWebviewHtml(
       cursor: not-allowed;
     }
     .btn-detail.is-active {
-      background: rgba(225, 172, 110, 0.16);
+      background: rgba(225, 172, 110, 0.2);
       color: var(--ag-accent);
       font-weight: 600;
     }

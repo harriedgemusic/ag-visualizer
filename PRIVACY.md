@@ -24,10 +24,10 @@ Raw lines are parsed transiently to extract only:
 
 ## Opt-in `debug` detail level (Trusted Workspaces only)
 
-When you explicitly click **`D` (`Debug`)** in the toolbar inside a Trusted Workspace (or configure application-scoped `agVisualizer.detailLevel = "debug"`):
+When you explicitly select **`Debug`** inside a Trusted Workspace (or configure application-scoped `agVisualizer.detailLevel = "debug"`):
 - A red **`DEBUG`** warning banner appears in the panel and status bar.
 - Bounded previews (`<= 240` chars, sliced before scanning to `<= 600` chars) of line ranges (`L12-L48`), key arguments, error messages, tool output heads, and `thinking` snippets are extracted transiently in memory and displayed only inside clicked Step Detail Cards.
-- Clicking **`D`** in the toolbar is **session-ephemeral** (never persisted into global VS Code settings) and disabled in untrusted workspaces (`vscode.workspace.isTrusted === false`).
+- Selecting **`Debug`** in the panel/QuickPick is **session-ephemeral** (never persisted into global VS Code settings) and disabled in untrusted workspaces (`vscode.workspace.isTrusted === false`), whereas switching between **`Compact`** and **`Verbose`** works cleanly in any workspace.
 - Switching back to **`verbose`** or **`compact`** immediately scrubs every `debug` preview from memory (`TranscriptReducer.updateSetup()`).
 - **Exports stay clean**: `formatMarkdownReport` (`📋` Copy Markdown Snapshot), `drawBrailleMap`, `computeBreakdown`, `computeTurnSummaries`, and `computeTokenStats` **never** read or export `debug` previews, even while `debug` mode is active.
 

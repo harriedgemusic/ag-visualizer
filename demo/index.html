@@ -154,6 +154,37 @@
       color: var(--ag-error);
       font-size: 11px;
     }
+    .detail-bar {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      width: 100%;
+      margin-bottom: 10px;
+      border: 1px solid var(--ag-border);
+      border-radius: 6px;
+      overflow: hidden;
+      background: rgba(128, 128, 128, 0.06);
+    }
+    .btn-detail {
+      height: 28px;
+      padding: 0 8px;
+      border: none;
+      border-right: 1px solid var(--ag-border);
+      border-radius: 0;
+      background: transparent;
+      color: var(--ag-dim);
+      font-size: 11px;
+    }
+    .btn-detail:last-child { border-right: none; }
+    .btn-detail.is-active {
+      background: rgba(225, 172, 110, 0.2);
+      color: var(--ag-accent);
+      font-weight: 600;
+    }
+    .btn-detail.is-debug-active {
+      background: rgba(232, 101, 79, 0.22);
+      color: var(--ag-error);
+      font-weight: 700;
+    }
     .bd-legend {
       display: flex;
       flex-wrap: wrap;
@@ -287,6 +318,11 @@
     </div>
     <div class="grid">
       <div class="card">
+        <div id="demo-detail-group" class="detail-bar" role="group" aria-label="Detail level">
+          <button class="btn-detail" data-detail="compact" type="button">Compact</button>
+          <button class="btn-detail" data-detail="verbose" type="button">Verbose</button>
+          <button class="btn-detail" data-detail="debug" type="button">Debug</button>
+        </div>
         <div id="demo-debug-banner" class="debug-banner" style="display:none"></div>
         <div id="demo-map" class="map-stage"></div>
         <pre id="demo-braille" class="braille-stage" style="display:none"></pre>

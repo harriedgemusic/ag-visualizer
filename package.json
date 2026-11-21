@@ -2,7 +2,7 @@
   "name": "ag-visualizer",
   "displayName": "Antigravity Work Map",
   "description": "A calm, passive, privacy-first live visual map of Antigravity IDE agent activity.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "ag-visualizer",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -63,6 +63,11 @@
         "command": "agVisualizer.selectSession",
         "title": "Antigravity Work Map: Select Conversation",
         "icon": "$(list-selection)"
+      },
+      {
+        "command": "agVisualizer.selectDetailLevel",
+        "title": "Antigravity Work Map: Select Detail Level",
+        "icon": "$(list-tree)"
       }
     ],
     "menus": {
@@ -73,14 +78,19 @@
           "group": "navigation@1"
         },
         {
-          "command": "agVisualizer.toggleDemo",
+          "command": "agVisualizer.selectDetailLevel",
           "when": "view == agVisualizer.mapView",
           "group": "navigation@2"
         },
         {
-          "command": "agVisualizer.openPanel",
+          "command": "agVisualizer.toggleDemo",
           "when": "view == agVisualizer.mapView",
           "group": "navigation@3"
+        },
+        {
+          "command": "agVisualizer.openPanel",
+          "when": "view == agVisualizer.mapView",
+          "group": "navigation@4"
         }
       ]
     },
@@ -143,8 +153,7 @@
           "enum": ["compact", "verbose", "debug"],
           "default": "compact",
           "scope": "application",
-          "restricted": true,
-          "description": "Level of detail shown in the Work Map panel. 'debug' displays truncated raw arguments, errors, and thinking on screen (opt-in only)."
+          "description": "Level of detail shown in the Work Map panel. 'debug' displays truncated raw arguments, errors, and thinking on screen (opt-in only, Trusted Workspaces only)."
         },
         "agVisualizer.subagentNames": {
           "type": "boolean",

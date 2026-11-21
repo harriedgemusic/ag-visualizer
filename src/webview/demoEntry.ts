@@ -55,6 +55,7 @@ const selTheme = document.getElementById('sel-theme') as HTMLSelectElement
 const selLayout = document.getElementById('sel-layout') as HTMLSelectElement
 const selMotion = document.getElementById('sel-motion') as HTMLSelectElement
 const selDetail = document.getElementById('sel-detail') as HTMLSelectElement
+const detailGroupEl = document.getElementById('demo-detail-group') as HTMLElement
 
 let options: UserOptions = {
   language: 'en',
@@ -177,6 +178,21 @@ function renderDemo(): void {
     debugBannerEl.style.display = 'none'
     debugBannerEl.innerHTML = ''
   }
+
+  const detailLabels: Record<DetailLevel, string> = {
+    compact: setup.t.detailCompact,
+    verbose: setup.t.detailVerbose,
+    debug: setup.t.detailDebug,
+  }
+  detailGroupEl.querySelectorAll<HTMLButtonElement>('.btn-detail').forEach(btn => {
+    const lvl = btn.dataset.detail as DetailLevel | undefined
+    if (!lvl) return
+    btn.textContent = detailLabels[lvl]
+    btn.setAttribute('aria-pressed', String(setup.detailLevel === lvl))
+    btn.classList.toggle('is-active', setup.detailLevel === lvl && lvl !== 'debug')
+    btn.classList.toggle('is-debug-active', setup.detailLevel === lvl && lvl === 'debug')
+  })
+  selDetail.value = setup.detailLevel
 
   if (viewMode === 'braille') {
     mapEl.style.display = 'none'
@@ -534,9 +550,8 @@ selMotion.addEventListener('change', () => {
   lastSvg = ''
   renderDemo()
 })
-selDetail.addEventListener('change', () => {
+function setDemoDetail(next: DetailLevel): void {
   const prevDetail = setup.detailLevel
-  const next = selDetail.value as DetailLevel
   options = { ...options, detailLevel: next }
   setup = setupFrom(options, 'en')
   reducer.updateSetup(setup)
@@ -544,6 +559,21 @@ selDetail.addEventListener('change', () => {
     rebuildToCurrentIdx()
   }
   renderDemo()
+}
+
+detailGroupEl.addEventListener('click', ev => {
+  const btn = (ev.target as Element | null)?.closest('.btn-detail') as HTMLButtonElement | null
+  const lvl = btn?.dataset.detail as DetailLevel | undefined
+  if (lvl === 'compact' || lvl === 'verbose' || lvl === 'debug') {
+    setDemoDetail(lvl)
+  }
+})
+
+selDetail.addEventListener('change', () => {
+  const lvl = selDetail.value as DetailLevel
+  if (lvl === 'compact' || lvl === 'verbose' || lvl === 'debug') {
+    setDemoDetail(lvl)
+  }
 })
 
 renderDemo()
