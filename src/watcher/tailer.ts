@@ -209,7 +209,12 @@ export class TranscriptTailer {
         const combined = state.remainder + text
         const lines = combined.split('\n')
         const tail = lines.pop() ?? ''
-        state.remainder = tail.length > MAX_LINE_BYTES ? '' : tail
+        if (tail.length > MAX_LINE_BYTES) {
+          state.remainder = ''
+          state.skipPartialFirstLine = true
+        } else {
+          state.remainder = tail
+        }
 
         for (const line of lines) {
           if (state.skipPartialFirstLine) {

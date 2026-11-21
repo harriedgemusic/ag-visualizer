@@ -112,8 +112,9 @@ function renderDemo(): void {
   if (bd.shares.length === 0) {
     breakdownEl.innerHTML = ''
   } else {
+    const bdTimeLabel = bd.totalTimeMs > 0 ? formatMs(bd.totalTimeMs, setup.t) : '—'
     breakdownEl.innerHTML = `
-      <div class="bd-head">${bd.turns}t · ${bd.totalCalls}× · ${esc(formatMs(Math.max(1, bd.totalTimeMs), setup.t))} · ${formatTokens(bd.totalTokens)} tok</div>
+      <div class="bd-head">${bd.turns}t · ${bd.totalCalls}× · ${esc(bdTimeLabel)} · ${formatTokens(bd.totalTokens)} tok</div>
       <div class="bd-bar">${bd.shares
         .map(
           sh =>
@@ -134,13 +135,14 @@ function renderDemo(): void {
 
   if (selectedStation) {
     const ins = inspectStation(board, selectedStation, setup)
+    const insTimeLabel = ins.totalTimeMs > 0 ? formatMs(ins.totalTimeMs, setup.t) : '—'
     inspectorEl.style.display = 'block'
     inspectorEl.innerHTML = `
       <div class="ins-head">
         <strong>${esc(ins.stationName)} (${ins.callSharePct}%)</strong>
         <button type="button" id="demo-ins-close">×</button>
       </div>
-      <div class="ins-meta">${ins.count}× · ${esc(formatMs(Math.max(1, ins.totalTimeMs), setup.t))}${ins.tokens > 0 ? ` · +${formatTokens(ins.tokens)}` : ''}</div>
+      <div class="ins-meta">${ins.count}× · ${esc(insTimeLabel)}${ins.tokens > 0 ? ` · +${formatTokens(ins.tokens)}` : ''}</div>
     `
     document.getElementById('demo-ins-close')?.addEventListener('click', () => {
       selectedStation = undefined

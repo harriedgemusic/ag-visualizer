@@ -47,6 +47,7 @@ function formatLiveDuration(startedAt: number, msUnit: string, secUnit: string):
 }
 
 function formatCompactMs(ms: number, msUnit: string, secUnit: string): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '—'
   if (ms < 1000) return `${Math.round(ms)} ${msUnit}`
   return `${(ms / 1000).toFixed(1)} ${secUnit}`
 }
@@ -262,10 +263,14 @@ function renderBreakdown(wrap: HTMLElement, s: WebviewStateMessage): void {
     })
     .join('')
 
+  const modeButtonHtml = hasTokens
+    ? `<button type="button" class="btn" id="ag-bd-mode">${useTokens ? 'Tokens' : 'Time'}</button>`
+    : ''
+
   wrap.innerHTML = `
     <div class="breakdown-head">
       <span>${b.turns}t · ${b.totalCalls}× · ${escapeHtml(totalLabel)}</span>
-      <button type="button" class="btn" id="ag-bd-mode">${useTokens ? 'Tokens' : 'Time'}</button>
+      ${modeButtonHtml}
     </div>
     <div class="breakdown-bar">${segmentsHtml}</div>
   `
@@ -346,12 +351,13 @@ function renderFeed(feedEl: HTMLElement, s: WebviewStateMessage): void {
       const expandHtml = r.isLong
         ? `<button class="row-expand" data-row-id="${escapeHtml(r.id)}" type="button">${isOpen ? '▾' : '▸'}</button>`
         : ''
-      const timeText = r.isRunning
-        ? formatLiveDuration(r.startedAt, s.strings.msUnit, s.strings.secUnit)
-        : r.formattedTime
+      const timeText =
+        r.isRunning && s.replay.isLive
+          ? formatLiveDuration(r.startedAt, s.strings.msUnit, s.strings.secUnit)
+          : r.formattedTime
       const metaText = `${timeText}${r.formattedCost ? ` ${r.formattedCost}` : ''}`
 
-      return `<div class="${cls.join(' ')}" data-started="${r.startedAt}" data-running="${r.isRunning ? '1' : '0'}" data-cost="${escapeHtml(r.formattedCost)}">
+      return `<div class="${cls.join(' ')}" data-started="${r.startedAt}" data-running="${r.isRunning && s.replay.isLive ? '1' : '0'}" data-cost="${escapeHtml(r.formattedCost)}">
         <div class="row-main">
           <span class="row-mark">${mark}</span>
           <span class="row-station">${escapeHtml(r.stationName)}</span>
