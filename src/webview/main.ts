@@ -537,8 +537,9 @@ function renderStepCard(r: FeedRowPayload, s: WebviewStateMessage): string {
   </div>`
 }
 
-function renderFeed(feedEl: HTMLElement, s: WebviewStateMessage): void {
+function renderFeed(feedEl: HTMLElement, s: WebviewStateMessage, resetScroll = false): void {
   const isDetailed = s.detailLevel !== 'compact'
+  const prevScrollTop = isDetailed && !resetScroll ? feedEl.scrollTop : 0
   feedEl.classList.toggle('is-detailed', isDetailed)
 
   if (s.rows.length === 0) {
@@ -556,9 +557,9 @@ function renderFeed(feedEl: HTMLElement, s: WebviewStateMessage): void {
       else if (r.status === 'err' || r.status === 'block') cls.push('is-error')
       else cls.push('is-ok')
       if (r.formattedTime === '—') cls.push('is-moment')
-      const isOpen = r.isLong && openRowId === r.id
-      if (isOpen) cls.push('is-open')
       const isCardOpen = isDetailed && selectedStepId === r.id
+      const isOpen = (r.isLong && openRowId === r.id) || isCardOpen
+      if (isOpen) cls.push('is-open')
       if (isDetailed) cls.push('is-clickable')
       if (isCardOpen) cls.push('is-card-open')
 
@@ -592,11 +593,16 @@ function renderFeed(feedEl: HTMLElement, s: WebviewStateMessage): void {
       </div>${cardHtml}`
     })
     .join('')
+
+  if (isDetailed) {
+    feedEl.scrollTop = resetScroll ? 0 : prevScrollTop
+  }
 }
 
 function render(s: WebviewStateMessage): void {
   const sessionKey = `${s.mode}:${s.activeSessionId ?? ''}`
-  if (sessionKey !== lastSessionKey) {
+  const sessionChanged = sessionKey !== lastSessionKey
+  if (sessionChanged) {
     lastSessionKey = sessionKey
     openRowId = undefined
     selectedStepId = undefined
@@ -691,7 +697,7 @@ function render(s: WebviewStateMessage): void {
   renderTelemetry(ui.telemetryWrap, s)
   renderTurns(ui.turnsWrap, s)
   renderInspector(ui.inspectorWrap, s)
-  renderFeed(ui.feed, s)
+  renderFeed(ui.feed, s, sessionChanged)
 }
 
 window.addEventListener('message', event => {

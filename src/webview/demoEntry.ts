@@ -308,6 +308,7 @@ function renderDemo(): void {
     inspectorEl.innerHTML = ''
   }
 
+  const prevScrollTop = isDetailed ? feedEl.scrollTop : 0
   feedEl.classList.toggle('is-detailed', isDetailed)
   const rows = foldRows(filterBoardByStation(board, selectedStation), isDetailed ? VERBOSE_LIST_ROWS : 16, setup.subagentNames, isDetailed)
   if (rows.length === 0) {
@@ -355,6 +356,9 @@ function renderDemo(): void {
         </div>${cardHtml}`
       })
       .join('')
+    if (isDetailed) {
+      feedEl.scrollTop = prevScrollTop
+    }
   }
 
   rawJsonEl.textContent = JSON.stringify(lastRawPreview, null, 2)

@@ -104,6 +104,7 @@ class MapController implements vscode.Disposable {
   private _selectedStation: StationId | undefined
   private _replayIndex: number | undefined
   private _detailOverride: DetailLevel | undefined
+  private _updatingDetailConfig = 0
   private _statusBar: vscode.StatusBarItem
   private _targets = new Set<vscode.Webview>()
   private _targetDisposables = new Map<vscode.Webview, vscode.Disposable[]>()
@@ -126,7 +127,7 @@ class MapController implements vscode.Disposable {
     this._disposables.push(
       this._statusBar,
       vscode.workspace.onDidChangeConfiguration(e => {
-        if (e.affectsConfiguration('agVisualizer.detailLevel')) {
+        if (e.affectsConfiguration('agVisualizer.detailLevel') && this._updatingDetailConfig === 0) {
           this._detailOverride = undefined
         }
         if (e.affectsConfiguration('agVisualizer')) {
@@ -398,10 +399,13 @@ class MapController implements vscode.Disposable {
     const cfg = vscode.workspace.getConfiguration('agVisualizer')
     const currentSetting = cfg.get<string>('detailLevel', 'compact')
     if (currentSetting !== level) {
+      this._updatingDetailConfig += 1
       try {
         await cfg.update('detailLevel', level, vscode.ConfigurationTarget.Global)
       } catch {
         // Ephemeral override stays active even if global config write is declined
+      } finally {
+        this._updatingDetailConfig -= 1
       }
     }
   }

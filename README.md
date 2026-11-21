@@ -56,11 +56,11 @@ Search for **`Antigravity Work Map`** (`ag-visualizer.ag-visualizer`) directly i
 
 ### Manual Installation from VSIX
 
-1. Download **`ag-visualizer-0.3.1.vsix`** from [GitHub Releases](https://github.com/harriedgemusic/ag-visualizer/releases/latest).
-2. In **Antigravity IDE**, open the **Extensions** panel (`Cmd+Shift+X` / `Ctrl+Shift+X`), click the **`⋯`** menu at the top-right, choose **Install from VSIX...**, and select `ag-visualizer-0.3.1.vsix`.
+1. Download **`ag-visualizer-0.3.2.vsix`** from [GitHub Releases](https://github.com/harriedgemusic/ag-visualizer/releases/latest).
+2. In **Antigravity IDE**, open the **Extensions** panel (`Cmd+Shift+X` / `Ctrl+Shift+X`), click the **`⋯`** menu at the top-right, choose **Install from VSIX...**, and select `ag-visualizer-0.3.2.vsix`.
    - Or install via CLI:
      ```bash
-     "/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --install-extension ag-visualizer-0.3.1.vsix --force
+     "/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --install-extension ag-visualizer-0.3.2.vsix --force
      ```
 3. Reload Antigravity IDE (`Developer: Reload Window`), then click the **Work Map** icon in the Activity Bar or run **Antigravity Work Map: Open Beside Chat** from the Command Palette.
 
@@ -72,7 +72,7 @@ cd ag-visualizer
 npm install
 npm run check
 npm run package
-"/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --install-extension ag-visualizer-0.3.1.vsix --force
+"/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --install-extension ag-visualizer-0.3.2.vsix --force
 ```
 
 ## Standalone Browser Demo

@@ -2,7 +2,7 @@
   "name": "ag-visualizer",
   "displayName": "Antigravity Work Map",
   "description": "A calm, passive, privacy-first live visual map of Antigravity IDE agent activity.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "ag-visualizer",
   "license": "MIT",
   "icon": "media/icon.png",

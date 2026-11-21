@@ -113,7 +113,11 @@ function normalizeUriPath(uriOrPath: string): string {
       s = s.slice('file://'.length)
     }
   }
-  return s.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  return s
+    .replace(/\\/g, '/')
+    .replace(/^\/([a-zA-Z]:\/)/, '$1')
+    .replace(/\/+$/, '')
+    .toLowerCase()
 }
 
 export async function listSessions(dataDirOrDirs: string | readonly string[]): Promise<SessionSummary[]> {
