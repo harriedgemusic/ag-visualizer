@@ -11,8 +11,14 @@ A calm, passive, privacy-first live visual map of **Antigravity IDE** agent acti
 
 ---
 
-## Features (v0.3.0)
+## Features (v0.4.0)
 
+- **Antigravity IDE Quota Pools, Remaining % & 24h / 7d Token Usage**:
+  - **Collapsible Quota & Remaining Card** directly above the breakdown bar showing three complementary levels of remaining capacity:
+    1. **Active Session Context Budget**: used vs. model context limit (`% remaining` + remaining tokens, auto-calibrated by model or `agVisualizer.contextWindowTokens`).
+    2. **Antigravity IDE Model Quota Pools**: per-model remaining %, used %, reset countdown, plan tier badge, and AI credits decoded locally from read-only `state.vscdb` (`antigravityUnifiedStateSync`, zero PII or OAuth fields read).
+    3. **Aggregate 24h & 7d IDE Token Usage**: total/input/output tokens, cache hit %, and session count across recent local conversations, plus an optional personal 24h budget meter (`agVisualizer.dailyTokenBudget`).
+  - **Status Bar Quota Indicator**: shows active context %, lowest remaining quota (`Q <pct>%`), and a detailed hover tooltip breakdown (toggleable via `agVisualizer.showQuota`).
 - **Selectable Detail Levels (`Compact` | `Verbose` | `Debug`)**:
   - Dedicated 3-way segmented bar directly in the panel, interactive switcher in the browser demo, **Select Detail Level** command/view-title icon, and `agVisualizer.detailLevel` setting (default `compact`).
   - **Compact**: calm, folded 16-row activity feed with zero raw content retained.
@@ -56,11 +62,11 @@ Search for **`Antigravity Work Map`** (`ag-visualizer.ag-visualizer`) directly i
 
 ### Manual Installation from VSIX
 
-1. Download **`ag-visualizer-0.3.2.vsix`** from [GitHub Releases](https://github.com/harriedgemusic/ag-visualizer/releases/latest).
-2. In **Antigravity IDE**, open the **Extensions** panel (`Cmd+Shift+X` / `Ctrl+Shift+X`), click the **`⋯`** menu at the top-right, choose **Install from VSIX...**, and select `ag-visualizer-0.3.2.vsix`.
+1. Download **`ag-visualizer-0.4.0.vsix`** from [GitHub Releases](https://github.com/harriedgemusic/ag-visualizer/releases/latest).
+2. In **Antigravity IDE**, open the **Extensions** panel (`Cmd+Shift+X` / `Ctrl+Shift+X`), click the **`⋯`** menu at the top-right, choose **Install from VSIX...**, and select `ag-visualizer-0.4.0.vsix`.
    - Or install via CLI:
      ```bash
-     "/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --install-extension ag-visualizer-0.3.2.vsix --force
+     "/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --install-extension ag-visualizer-0.4.0.vsix --force
      ```
 3. Reload Antigravity IDE (`Developer: Reload Window`), then click the **Work Map** icon in the Activity Bar or run **Antigravity Work Map: Open Beside Chat** from the Command Palette.
 
@@ -72,7 +78,7 @@ cd ag-visualizer
 npm install
 npm run check
 npm run package
-"/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --install-extension ag-visualizer-0.3.2.vsix --force
+"/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --install-extension ag-visualizer-0.4.0.vsix --force
 ```
 
 ## Standalone Browser Demo
@@ -98,6 +104,8 @@ open demo/index.html
 | `agVisualizer.coreName` | `"AGY"` | Short label inside the central core (up to 12 chars) |
 | `agVisualizer.contextCost` | `true` | Show estimated context token delta per call and per station |
 | `agVisualizer.contextWindowTokens` | `0` | Context denominator override (`0` = auto by model, e.g. `1,000,000` for Gemini) |
+| `agVisualizer.showQuota` | `true` | Show Antigravity IDE quota pools, active context remaining %, and 24h/7d token usage |
+| `agVisualizer.dailyTokenBudget` | `0` | Optional personal 24h token budget (`0` = hidden; `> 0` renders a daily remaining % meter) |
 | `agVisualizer.textSize` | `"footnote"` | Feed font size: `caption`, `footnote`, `body` |
 | `agVisualizer.detailLevel` | `"compact"` | Detail level: `compact`, `verbose`, or opt-in `debug` (application-scoped; `debug` restricted to Trusted Workspaces) |
 | `agVisualizer.subagentNames` | `true` | Prefix subagent steps with their short role name |
@@ -115,8 +123,8 @@ open demo/index.html
 
 ```text
 src/
-├── core/        # Pure, zero-I/O engine (types, palette, 7-lang text, setup, classify, cost, feed, draw, reducer, breakdown, inspector, replay, braille, telemetry, demo)
-├── watcher/     # Strictly read-only transcript tailer (64 KB chunked) & SQLite/FS session discovery
+├── core/        # Pure, zero-I/O engine (types, palette, 7-lang text, setup, classify, cost, feed, draw, reducer, breakdown, inspector, replay, braille, telemetry, quota, demo)
+├── watcher/     # Strictly read-only transcript tailer (64 KB chunked), SQLite/FS session discovery, local quota & 24h/7d token usage readers
 ├── extension/   # Antigravity IDE (VS Code) extension host, settings, strict-CSP webview shell
 └── webview/     # Webview client & standalone browser demo entrypoint
 scripts/

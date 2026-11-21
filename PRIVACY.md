@@ -6,6 +6,8 @@
 
 1. **Transcript logs (read-only)**: `~/.gemini/antigravity/brain/<conversation-id>/.system_generated/logs/transcript.jsonl` (and `~/.gemini/antigravity-ide/...`). Read incrementally in bounded 64 KB chunks using `fs.promises.open(..., 'r')`.
 2. **Session list metadata (read-only)**: `~/.gemini/antigravity/conversation_summaries.db` opened with Node's `node:sqlite` `{ readOnly: true, timeout: 250 }` and `PRAGMA query_only = ON` solely to display sanitized conversation titles (capped at 80 chars), workspace URIs (for auto-selecting the workspace conversation), and parent-child subagent links.
+3. **Antigravity IDE local quota state (read-only)**: `User/globalStorage/state.vscdb` (via `lstat` symlink exclusion and `node:sqlite` `{ readOnly: true, timeout: 250 }` + `PRAGMA query_only = ON`), querying **only** `ItemTable` keys `antigravityUnifiedStateSync.userStatus` and `antigravityUnifiedStateSync.modelCredits` to extract model pool names, remaining/used fractions, reset timestamps, plan tier name (`<= 32` chars), and credit counters. User profile/account/OAuth/avatar fields (including protobuf fields `3`, `7`, `38`) are never decoded, stored, or displayed.
+4. **24h / 7d IDE token rollups (read-only)**: recent local `transcript.jsonl` files scanned via `fs.promises.open(..., 'r')` (`lstat` + `handle.stat()` checks, 64 KB chunks, up to 4 MB tail), retaining purely numeric `{ at, input, cacheRead, output }` counters from `PLANNER_RESPONSE` records (no prompt/response text or paths retained).
 
 ## What `ag-visualizer` discards immediately (Default `compact` & `verbose` modes)
 

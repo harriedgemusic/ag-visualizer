@@ -1,3 +1,4 @@
+import path from 'node:path'
 import * as vscode from 'vscode'
 import { drawBrailleMap, formatMarkdownReport } from '../core/braille'
 import { computeBreakdown } from '../core/breakdown'
@@ -7,14 +8,25 @@ import { drawMap } from '../core/draw'
 import { foldRows, nowParts, VERBOSE_LIST_ROWS } from '../core/feed'
 import { filterBoardByStation, inspectStation } from '../core/inspector'
 import { resolvePalette } from '../core/palette'
+import { computeContextBudget } from '../core/quota'
 import { TranscriptReducer } from '../core/reducer'
 import { sliceBoardAt, turnIndices } from '../core/replay'
 import { STATIONS } from '../core/setup'
 import type { Setup } from '../core/setup'
 import { computeTokenStats, computeTurnSummaries, drawContextSparkline } from '../core/telemetry'
-import type { Board, DetailLevel, SessionSummary, StationId } from '../core/types'
+import type {
+  Board,
+  DetailLevel,
+  IdeUsageSummary,
+  QuotaModelPool,
+  QuotaSnapshot,
+  SessionSummary,
+  StationId,
+} from '../core/types'
 import { listSessions, pickAutoSession, resolveAntigravityDirs } from '../watcher/discovery'
+import { readAntigravityQuota } from '../watcher/quota'
 import { TranscriptTailer } from '../watcher/tailer'
+import { readIdeTokenUsage } from '../watcher/usage'
 import type { FeedRowPayload, WebviewCommandMessage, WebviewStateMessage } from '../webview/protocol'
 import { buildSetup, isLightTheme, readUserOptions } from './config'
 import { getWebviewHtml } from './webviewHtml'
@@ -24,6 +36,26 @@ const HIDDEN_KEY = 'agVisualizer.hidden'
 const VIEW_MODE_KEY = 'agVisualizer.viewMode'
 const LONG_LABEL = 44
 const VALID_STATION_IDS = new Set<string>(STATIONS.map(s => s.id))
+
+function pickStatusBarQuotaPool(quota: QuotaSnapshot | undefined, model: string | undefined): QuotaModelPool | undefined {
+  if (!quota || quota.pools.length === 0) return undefined
+  if (model) {
+    const m = model.toLowerCase()
+    const matchers = [
+      (p: QuotaModelPool) => m.includes('opus') && p.label.toLowerCase().includes('opus'),
+      (p: QuotaModelPool) => m.includes('sonnet') && p.label.toLowerCase().includes('sonnet'),
+      (p: QuotaModelPool) => m.includes('flash') && p.label.toLowerCase().includes('flash'),
+      (p: QuotaModelPool) => m.includes('gemini') && p.label.toLowerCase().includes('gemini'),
+      (p: QuotaModelPool) => m.includes('claude') && p.label.toLowerCase().includes('claude'),
+      (p: QuotaModelPool) => m.includes('gpt') && p.label.toLowerCase().includes('gpt'),
+    ]
+    for (const test of matchers) {
+      const hit = quota.pools.find(test)
+      if (hit) return hit
+    }
+  }
+  return [...quota.pools].sort((a, b) => a.remainingPct - b.remainingPct)[0]
+}
 
 function buildRows(board: Board, setup: Setup, stationFilter?: StationId): FeedRowPayload[] {
   const { t } = setup
@@ -105,6 +137,11 @@ class MapController implements vscode.Disposable {
   private _replayIndex: number | undefined
   private _detailOverride: DetailLevel | undefined
   private _updatingDetailConfig = 0
+  private _globalStorageParentDir: string | undefined
+  private _quota: QuotaSnapshot | undefined
+  private _ideUsage: IdeUsageSummary | undefined
+  private _lastUsagePollMs = 0
+  private _lastMaxSessionMtime = 0
   private _statusBar: vscode.StatusBarItem
   private _targets = new Set<vscode.Webview>()
   private _targetDisposables = new Map<vscode.Webview, vscode.Disposable[]>()
@@ -113,6 +150,7 @@ class MapController implements vscode.Disposable {
 
   constructor(context: vscode.ExtensionContext) {
     this._context = context
+    this._globalStorageParentDir = path.dirname(context.globalStorageUri.fsPath)
     this._setup = this.effectiveSetup()
     this._demoReducer = new TranscriptReducer(this._setup)
     this._tailer = new TranscriptTailer(this._setup, () => {
@@ -145,9 +183,9 @@ class MapController implements vscode.Disposable {
       }),
     )
 
-    void this.refreshSessions()
+    void this.refreshSessions().catch(() => {})
     this._discoveryTimer = setInterval(() => {
-      void this.refreshSessions()
+      void this.refreshSessions().catch(() => {})
     }, 2000)
   }
 
@@ -261,9 +299,28 @@ class MapController implements vscode.Disposable {
         this._replayIndex = undefined
       }
 
+      if (this._setup.showQuota) {
+        this._quota = await readAntigravityQuota(this._globalStorageParentDir)
+        const nowMs = Date.now()
+        const maxMtime = this._sessions[0]?.mtimeMs ?? 0
+        if (
+          forceBroadcast ||
+          !this._ideUsage ||
+          nowMs - this._lastUsagePollMs >= 10_000 ||
+          maxMtime > this._lastMaxSessionMtime
+        ) {
+          this._ideUsage = await readIdeTokenUsage(this._sessions, nowMs)
+          this._lastUsagePollMs = nowMs
+          this._lastMaxSessionMtime = maxMtime
+        }
+      }
+
       const fingerprint = [
         this._mode,
         this._tailer.activeSessionId ?? '',
+        this._setup.showQuota ? 1 : 0,
+        this._quota?.syncedAtMs ?? 0,
+        this._ideUsage?.last24h.steps ?? 0,
         ...this._sessions
           .filter(s => !s.parentConversationId)
           .slice(0, 20)
@@ -288,7 +345,7 @@ class MapController implements vscode.Disposable {
   attachWebview(webview: vscode.Webview): void {
     this._targets.add(webview)
     const msgDisposable = webview.onDidReceiveMessage((msg: WebviewCommandMessage) => {
-      void this.handleMessage(msg)
+      void this.handleMessage(msg).catch(() => {})
     })
     this._targetDisposables.set(webview, [msgDisposable])
     this.postStateTo(webview)
@@ -620,6 +677,11 @@ class MapController implements vscode.Disposable {
     const sparklineSvg =
       tokenStats && tokenStats.steps > 0 ? drawContextSparkline(tokenStats, palette) : undefined
     const turnSummaries = includeTelemetry ? computeTurnSummaries(board, this._setup) : undefined
+    const contextBudget = this._setup.showQuota
+      ? computeContextBudget(board, this._setup.contextWindowTokens)
+      : undefined
+    const quota = this._setup.showQuota ? this._quota : undefined
+    const ideUsage = this._setup.showQuota ? this._ideUsage : undefined
 
     return {
       type: 'state',
@@ -664,6 +726,11 @@ class MapController implements vscode.Disposable {
       palette,
       hasContext: board.context !== undefined && Number.isFinite(board.context),
       contextPct: board.context !== undefined && Number.isFinite(board.context) ? board.context : undefined,
+      showQuota: this._setup.showQuota,
+      dailyTokenBudget: this._setup.dailyTokenBudget,
+      ...(contextBudget ? { contextBudget } : {}),
+      ...(quota ? { quota } : {}),
+      ...(ideUsage ? { ideUsage } : {}),
       ...(tokenStats ? { tokenStats } : {}),
       ...(sparklineSvg ? { sparklineSvg } : {}),
       ...(turnSummaries ? { turnSummaries } : {}),
@@ -686,6 +753,14 @@ class MapController implements vscode.Disposable {
         debugWarning: this._setup.t.debugWarning,
         turnsTitle: this._setup.t.turnsTitle,
         cacheHit: this._setup.t.cacheHit,
+        quotaTitle: this._setup.t.quotaTitle,
+        remaining: this._setup.t.remaining,
+        used: this._setup.t.used,
+        resetsIn: this._setup.t.resetsIn,
+        ideUsage24h: this._setup.t.ideUsage24h,
+        ideUsage7d: this._setup.t.ideUsage7d,
+        dailyBudget: this._setup.t.dailyBudget,
+        quotaSynced: this._setup.t.quotaSynced,
       },
     }
   }
@@ -696,10 +771,34 @@ class MapController implements vscode.Disposable {
     if (board.context !== undefined && Number.isFinite(board.context)) {
       bits.push(`${Math.max(0, Math.min(100, Math.round(board.context)))}%`)
     }
+    if (this._setup.showQuota) {
+      const pool = pickStatusBarQuotaPool(this._quota, board.model)
+      if (pool) {
+        bits.push(`Q ${Math.round(pool.remainingPct)}%`)
+      }
+    }
     if (running > 0) bits.push(`${running} ${this._setup.t.running}`)
     if (this._mode === 'demo') bits.push(this._setup.t.demoLabel)
     if (this._setup.detailLevel === 'debug') bits.push('DEBUG')
     this._statusBar.text = `$(pulse) ${bits.join(' · ')}`
+
+    const tipLines: string[] = [this._setup.t.title]
+    const cb = this._setup.showQuota ? computeContextBudget(board, this._setup.contextWindowTokens) : undefined
+    if (cb) {
+      tipLines.push(
+        `${this._setup.t.context}: ${formatTokens(cb.usedTokens)} / ${formatTokens(cb.limitTokens)} (${cb.remainingPct}% ${this._setup.t.remaining})`,
+      )
+    }
+    if (this._setup.showQuota && this._quota?.pools.length) {
+      for (const p of this._quota.pools) {
+        tipLines.push(`${p.label}: ${p.remainingPct}% ${this._setup.t.remaining}`)
+      }
+    }
+    if (this._setup.showQuota && this._ideUsage && this._ideUsage.last24h.totalTokens > 0) {
+      const u = this._ideUsage.last24h
+      tipLines.push(`${this._setup.t.ideUsage24h}: ${formatTokens(u.totalTokens)} (${u.sessions}s · ${this._setup.t.cacheHit} ${u.cacheHitPct}%)`)
+    }
+    this._statusBar.tooltip = tipLines.join('\n')
   }
 
   private postStateTo(webview: vscode.Webview): void {

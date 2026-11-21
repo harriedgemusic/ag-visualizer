@@ -49,6 +49,14 @@ export type Strings = {
   debugWarning: string
   turnsTitle: string
   cacheHit: string
+  quotaTitle: string
+  remaining: string
+  used: string
+  resetsIn: string
+  ideUsage24h: string
+  ideUsage7d: string
+  dailyBudget: string
+  quotaSynced: string
 }
 
 const en: Strings = {
@@ -111,6 +119,14 @@ const en: Strings = {
   debugWarning: 'DEBUG: Showing truncated arguments, errors & thinking on screen',
   turnsTitle: 'Turns',
   cacheHit: 'cache',
+  quotaTitle: 'IDE Quota & Tokens',
+  remaining: 'left',
+  used: 'used',
+  resetsIn: 'resets in',
+  ideUsage24h: 'IDE 24h',
+  ideUsage7d: '7d',
+  dailyBudget: '24h budget',
+  quotaSynced: 'synced',
 }
 
 const ru: Strings = {
@@ -173,6 +189,14 @@ const ru: Strings = {
   debugWarning: 'DEBUG: на экране показаны обрезанные аргументы, ошибки и thinking',
   turnsTitle: 'Ходы',
   cacheHit: 'кэш',
+  quotaTitle: 'Квота IDE и токены',
+  remaining: 'осталось',
+  used: 'израсх.',
+  resetsIn: 'сброс через',
+  ideUsage24h: 'IDE 24ч',
+  ideUsage7d: '7д',
+  dailyBudget: 'лимит 24ч',
+  quotaSynced: 'синхр.',
 }
 
 const es: Strings = {
@@ -235,6 +259,14 @@ const es: Strings = {
   debugWarning: 'DEBUG: mostrando argumentos, errores y thinking truncados en pantalla',
   turnsTitle: 'Turnos',
   cacheHit: 'caché',
+  quotaTitle: 'Cuota IDE y tokens',
+  remaining: 'restante',
+  used: 'usado',
+  resetsIn: 'reinicia en',
+  ideUsage24h: 'IDE 24h',
+  ideUsage7d: '7d',
+  dailyBudget: 'límite 24h',
+  quotaSynced: 'sinc.',
 }
 
 const fr: Strings = {
@@ -297,6 +329,14 @@ const fr: Strings = {
   debugWarning: 'DEBUG : arguments, erreurs et thinking tronqués affichés à l’écran',
   turnsTitle: 'Tours',
   cacheHit: 'cache',
+  quotaTitle: 'Quota IDE et jetons',
+  remaining: 'restant',
+  used: 'utilisé',
+  resetsIn: 'réinit. dans',
+  ideUsage24h: 'IDE 24h',
+  ideUsage7d: '7j',
+  dailyBudget: 'budget 24h',
+  quotaSynced: 'synchro',
 }
 
 const de: Strings = {
@@ -359,6 +399,14 @@ const de: Strings = {
   debugWarning: 'DEBUG: Gekürzte Argumente, Fehler & Thinking werden angezeigt',
   turnsTitle: 'Züge',
   cacheHit: 'Cache',
+  quotaTitle: 'IDE-Kontingent & Tokens',
+  remaining: 'übrig',
+  used: 'verbraucht',
+  resetsIn: 'Reset in',
+  ideUsage24h: 'IDE 24h',
+  ideUsage7d: '7T',
+  dailyBudget: '24h-Budget',
+  quotaSynced: 'Stand',
 }
 
 const it: Strings = {
@@ -421,6 +469,14 @@ const it: Strings = {
   debugWarning: 'DEBUG: argomenti, errori e thinking troncati mostrati a schermo',
   turnsTitle: 'Turni',
   cacheHit: 'cache',
+  quotaTitle: 'Quota IDE e token',
+  remaining: 'rimasto',
+  used: 'usato',
+  resetsIn: 'reset tra',
+  ideUsage24h: 'IDE 24h',
+  ideUsage7d: '7g',
+  dailyBudget: 'budget 24h',
+  quotaSynced: 'sinc.',
 }
 
 const pt: Strings = {
@@ -483,6 +539,14 @@ const pt: Strings = {
   debugWarning: 'DEBUG: a mostrar argumentos, erros e thinking truncados no ecrã',
   turnsTitle: 'Turnos',
   cacheHit: 'cache',
+  quotaTitle: 'Quota IDE e tokens',
+  remaining: 'restante',
+  used: 'usado',
+  resetsIn: 'reinicia em',
+  ideUsage24h: 'IDE 24h',
+  ideUsage7d: '7d',
+  dailyBudget: 'limite 24h',
+  quotaSynced: 'sinc.',
 }
 
 export const LANGUAGES = ['en', 'ru', 'es', 'fr', 'de', 'it', 'pt'] as const

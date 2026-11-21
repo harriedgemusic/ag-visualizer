@@ -7,11 +7,12 @@ import { foldRows, nowParts, VERBOSE_LIST_ROWS } from '../core/feed'
 import { filterBoardByStation, inspectStation } from '../core/inspector'
 import { resolvePalette } from '../core/palette'
 import { TranscriptReducer } from '../core/reducer'
+import { computeContextBudget, formatResetCountdown } from '../core/quota'
 import { sliceBoardAt } from '../core/replay'
-import { setupFrom, STATIONS } from '../core/setup'
+import { setupFrom, STATIONS, type Setup } from '../core/setup'
 import { computeTokenStats, computeTurnSummaries, drawContextSparkline } from '../core/telemetry'
 import { LANGUAGES } from '../core/text'
-import type { DetailLevel, StationId, UserOptions } from '../core/types'
+import type { Board, DetailLevel, IdeUsageSummary, QuotaSnapshot, StationId, UserOptions } from '../core/types'
 
 const VALID_STATIONS = new Set<string>(STATIONS.map(s => s.id))
 const asStationId = (raw: string | null | undefined): StationId | undefined =>
@@ -36,6 +37,7 @@ const brailleEl = document.getElementById('demo-braille') as HTMLPreElement
 const feedEl = document.getElementById('demo-feed') as HTMLElement
 const nowWhatEl = document.getElementById('demo-now-what') as HTMLElement
 const nowMeterEl = document.getElementById('demo-now-meter') as HTMLElement
+const quotaEl = document.getElementById('demo-quota') as HTMLElement
 const breakdownEl = document.getElementById('demo-breakdown') as HTMLElement
 const telemetryEl = document.getElementById('demo-telemetry') as HTMLElement
 const turnsEl = document.getElementById('demo-turns') as HTMLElement
@@ -79,7 +81,171 @@ let viewMode: 'svg' | 'braille' = 'svg'
 let selectedStation: StationId | undefined
 let selectedStepId: string | undefined
 let turnsExpanded = false
+let quotaExpanded = false
 let replayIndex: number | undefined
+let refreshDemoQuota = (): void => {}
+
+quotaEl.addEventListener('click', (event) => {
+  const toggle = event.target instanceof Element ? event.target.closest('#demo-quota-toggle') : null
+  if (!toggle) return
+  quotaExpanded = !quotaExpanded
+  refreshDemoQuota()
+})
+
+const DEMO_QUOTA: QuotaSnapshot = {
+  planName: 'Google AI Pro',
+  availableCredits: 950,
+  minCredits: 50,
+  syncedAtMs: Date.now(),
+  pools: [
+    { id: 'gemini-3-8-pro', label: 'Gemini 3.8 Pro', remainingPct: 78, usedPct: 22, resetAtMs: Date.now() + 2 * 3_600_000 + 40 * 60_000 },
+    { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', remainingPct: 44, usedPct: 56, resetAtMs: Date.now() + 3 * 3_600_000 + 15 * 60_000 },
+    { id: 'gemini-3-8-flash', label: 'Gemini 3.8 Flash', remainingPct: 94, usedPct: 6, resetAtMs: Date.now() + 4 * 3_600_000, badge: 'NEW' },
+    { id: 'gpt-oss-120b', label: 'GPT-OSS 120B', remainingPct: 100, usedPct: 0 },
+  ],
+}
+
+const DEMO_IDE_USAGE: IdeUsageSummary = {
+  last24h: { inputTokens: 48_000, cacheReadTokens: 412_000, outputTokens: 29_500, totalTokens: 489_500, cacheHitPct: 90, sessions: 4, steps: 26 },
+  last7d: { inputTokens: 310_000, cacheReadTokens: 2_650_000, outputTokens: 185_000, totalTokens: 3_145_000, cacheHitPct: 90, sessions: 19, steps: 142 },
+  computedAtMs: Date.now(),
+}
+
+function fmtCompact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 10_000) return `${Math.round(n / 1000)}k`
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
+  return String(Math.round(n))
+}
+
+function pillTone(remainingPct: number): 'good' | 'warn' | 'bad' {
+  return remainingPct >= 50 ? 'good' : remainingPct >= 20 ? 'warn' : 'bad'
+}
+
+function renderDemoQuota(board: Board, setup: Setup): void {
+  if (!setup.showQuota) {
+    quotaEl.style.display = 'none'
+    quotaEl.textContent = ''
+    return
+  }
+
+  const nowMs = Date.now()
+  const t = setup.t
+  const budget = computeContextBudget(board, setup.contextWindowTokens)
+  quotaEl.style.display = ''
+  quotaEl.textContent = ''
+
+  const card = document.createElement('div')
+  card.className = 'quota-card'
+
+  const head = document.createElement('div')
+  head.className = 'quota-head'
+
+  const btn = document.createElement('button')
+  btn.id = 'demo-quota-toggle'
+  btn.className = 'quota-toggle'
+  btn.type = 'button'
+  btn.setAttribute('aria-expanded', String(quotaExpanded))
+  btn.textContent = `${quotaExpanded ? '▾' : '▸'} ${t.quotaTitle}`
+  head.appendChild(btn)
+
+  const badges = document.createElement('div')
+  badges.className = 'quota-badges'
+  if (DEMO_QUOTA.planName) {
+    const plan = document.createElement('span')
+    plan.className = 'quota-plan'
+    plan.textContent = DEMO_QUOTA.planName
+    badges.appendChild(plan)
+  }
+  const primaryPool = DEMO_QUOTA.pools[0]
+  if (primaryPool) {
+    const pill = document.createElement('span')
+    pill.className = `quota-pill ${pillTone(primaryPool.remainingPct)}`
+    pill.textContent = `${primaryPool.label}: ${primaryPool.remainingPct}% ${t.remaining}`
+    badges.appendChild(pill)
+  }
+  if (budget) {
+    const ctxPill = document.createElement('span')
+    ctxPill.className = `quota-pill ${pillTone(budget.remainingPct)}`
+    ctxPill.textContent = `Ctx ${budget.remainingPct}% ${t.remaining}`
+    badges.appendChild(ctxPill)
+  }
+  head.appendChild(badges)
+  card.appendChild(head)
+
+  if (quotaExpanded) {
+    const list = document.createElement('div')
+    list.className = 'quota-list'
+
+    const addBarRow = (name: string, valText: string, pctFill: number, tone: 'good' | 'warn' | 'bad'): void => {
+      const item = document.createElement('div')
+      item.className = 'quota-item'
+      const row = document.createElement('div')
+      row.className = 'quota-row'
+      const nameEl = document.createElement('span')
+      nameEl.className = 'quota-name'
+      nameEl.textContent = name
+      const valEl = document.createElement('span')
+      valEl.className = 'quota-val'
+      valEl.textContent = valText
+      row.append(nameEl, valEl)
+      const bar = document.createElement('div')
+      bar.className = 'quota-bar'
+      const fill = document.createElement('div')
+      fill.className = `quota-fill ${tone === 'good' ? '' : tone}`.trim()
+      fill.style.width = `${Math.max(0, Math.min(100, pctFill))}%`
+      bar.appendChild(fill)
+      item.append(row, bar)
+      list.appendChild(item)
+    }
+
+    if (budget) {
+      addBarRow(
+        'Context Window',
+        `${fmtCompact(budget.usedTokens)} / ${fmtCompact(budget.limitTokens)} · ${budget.remainingPct}% ${t.remaining}`,
+        budget.remainingPct,
+        pillTone(budget.remainingPct),
+      )
+    }
+
+    for (const pool of DEMO_QUOTA.pools) {
+      const cd = formatResetCountdown(pool.resetAtMs, nowMs)
+      const name = pool.badge ? `${pool.label} [${pool.badge}]` : pool.label
+      const cdSuffix = cd ? ` · ${t.resetsIn} ${cd}` : ''
+      addBarRow(name, `${pool.remainingPct}% ${t.remaining} · ${pool.usedPct}% ${t.used}${cdSuffix}`, pool.remainingPct, pillTone(pool.remainingPct))
+    }
+
+    if (setup.dailyTokenBudget > 0) {
+      const used24 = DEMO_IDE_USAGE.last24h.totalTokens
+      const remTok = Math.max(0, setup.dailyTokenBudget - used24)
+      const remPct = Math.max(0, Math.min(100, Math.round((remTok / setup.dailyTokenBudget) * 1000) / 10))
+      addBarRow(
+        t.dailyBudget,
+        `${fmtCompact(used24)} / ${fmtCompact(setup.dailyTokenBudget)} · ${remPct}% ${t.remaining}`,
+        remPct,
+        pillTone(remPct),
+      )
+    }
+
+    card.appendChild(list)
+
+    const foot = document.createElement('div')
+    foot.className = 'quota-foot'
+    const usage24 = document.createElement('span')
+    usage24.textContent = `${t.ideUsage24h}: ${fmtCompact(DEMO_IDE_USAGE.last24h.totalTokens)}`
+    const usage7d = document.createElement('span')
+    usage7d.textContent = `${t.ideUsage7d}: ${fmtCompact(DEMO_IDE_USAGE.last7d.totalTokens)}`
+    foot.append(usage24, usage7d)
+    if (DEMO_QUOTA.availableCredits !== undefined && DEMO_QUOTA.availableCredits > 0) {
+      const cred = document.createElement('span')
+      cred.textContent = `Credits: ${DEMO_QUOTA.availableCredits}`
+      foot.appendChild(cred)
+    }
+    card.appendChild(foot)
+  }
+
+  quotaEl.appendChild(card)
+}
 let copyTimer: number | undefined
 let lastRawPreview: unknown = { info: 'Waiting for first Antigravity transcript step...' }
 let lastKeptPreview: unknown = { entries: [] }
@@ -215,6 +381,9 @@ function renderDemo(): void {
   const parts = nowParts(board, setup.t)
   nowWhatEl.textContent = parts.what
   nowMeterEl.textContent = parts.meter
+
+  refreshDemoQuota = () => renderDemoQuota(board, setup)
+  refreshDemoQuota()
 
   const bd = computeBreakdown(board, setup)
   if (bd.shares.length === 0) {

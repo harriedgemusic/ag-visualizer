@@ -7,14 +7,16 @@ import type { SessionSummary } from '../core/types'
 function sanitizeOverrideDir(raw: string): string | undefined {
   const trimmed = raw.trim()
   if (!trimmed) return undefined
-  // Reject Windows UNC / network share paths to prevent outbound SMB/NTLM requests.
-  if (trimmed.startsWith('\\\\') || trimmed.startsWith('//')) return undefined
+  // Reject Windows UNC / network share paths (including mixed-slash forms) to prevent outbound SMB/NTLM requests.
+  if (/^[\\/]{2}/.test(trimmed)) return undefined
   let expanded = trimmed
   if (/^~(?:[/\\]|$)/.test(trimmed)) {
     expanded = path.join(os.homedir(), trimmed.slice(1))
   }
   if (!path.isAbsolute(expanded)) return undefined
-  return path.normalize(expanded)
+  const norm = path.normalize(expanded)
+  if (/^[\\/]{2}/.test(norm)) return undefined
+  return norm
 }
 
 export function resolveAntigravityDirs(overrideDir?: string): string[] {

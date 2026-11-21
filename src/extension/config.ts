@@ -23,6 +23,8 @@ export function readUserOptions(): UserOptions & { antigravityDataDir?: string }
     coreName: cfg.get<string>('coreName', 'AGY'),
     contextCost: cfg.get<boolean>('contextCost', true),
     contextWindowTokens: cfg.get<number>('contextWindowTokens', 0),
+    showQuota: cfg.get<boolean>('showQuota', true),
+    dailyTokenBudget: cfg.get<number>('dailyTokenBudget', 0),
     textSize: cfg.get<string>('textSize', 'footnote'),
     detailLevel,
     subagentNames: cfg.get<boolean>('subagentNames', true),

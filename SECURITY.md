@@ -6,8 +6,8 @@
 
 1. **Read-Only Out-of-Process Observation**:
    - Never registers `PreToolUse` / `PostToolUse` hooks and never alters agent permissions, prompts, or tool arguments.
-   - Reads `~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl` strictly with `fs.promises.open(path, 'r')` in bounded 64 KB chunks (`MAX_INITIAL_TAIL_BYTES = 4 MB`, `MAX_LINE_BYTES = 2 MB`, `StringDecoder('utf8')`).
-   - Reads `conversation_summaries.db` strictly with Node's `node:sqlite` `{ readOnly: true, timeout: 250 }` and `PRAGMA query_only = ON`.
+   - Reads `~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl` strictly with `fs.promises.open(path, 'r')` (plus `lstat` + `handle.stat()` regular-file checks, bounded 64 KB chunks, `MAX_INITIAL_TAIL_BYTES = 4 MB`, `MAX_LINE_BYTES = 2 MB`, `StringDecoder('utf8')`, bounded concurrency).
+   - Reads `conversation_summaries.db` and Antigravity IDE's local `User/globalStorage/state.vscdb` strictly with Node's `node:sqlite` `{ readOnly: true, timeout: 250 }` and `PRAGMA query_only = ON` (rejecting symlinks via `lstat`). Local quota decoding enforces strict Base64/Protobuf limits (`MAX_BASE64_CHARS = 350_000`, `MAX_PROTO_BYTES = 262_144`, `MAX_FIELDS = 2000`, 32-bit tags, `Number.isSafeInteger` credits/timestamps, `{ fatal: true }` UTF-8 decoding) and never touches PII/OAuth fields (`3`, `7`, `38`).
 2. **Zero Network & Zero Subprocess Surface**:
    - Enforced on every build via TypeScript AST static analysis in `scripts/check-surface.mjs`.
    - `src/core/**` has zero Node.js, VS Code, filesystem, network, or external imports, and relative imports cannot escape `src/core/`.
@@ -60,6 +60,21 @@ Zero **CRITICAL** findings. Every **HIGH**, **MEDIUM**, and **LOW** finding from
 | MEDIUM-2 | Medium | Truthy non-string `GENERIC.content` or malformed `tool_calls` elements (`null`/non-object/array `args`) could throw `TypeError` in `TranscriptReducer.push()` | Added strict `typeof content === 'string'` check in `parseGenericMetadata` and element/plain-object checks on `tool_calls` and `tc.args` |
 | MEDIUM-3 | Medium | Selecting `debug` in an untrusted workspace Webview could persist `detailLevel: "debug"` into global User settings | Enforced `scope: "application"` on `agVisualizer.detailLevel`, added `vscode.workspace.isTrusted` guards in `config.ts` and `setDetailLevel` so `'debug'` is disabled in untrusted workspaces and session-ephemeral in memory, while allowing `compact`/`verbose` switching everywhere |
 | LOW-1..4 | Low | Unbounded `StartLine`/`EndLine` passed to `unwrapValue()`, unused `model`/`stepIdx` in `ModelStepTelemetry`, unescaped direct-caller palette values in `drawMap`/`lightRules`, per-render listener/DOM churn | Bounded line-range strings (`<= 32` chars) before `unwrapValue()`, removed unused fields from `ModelStepTelemetry`, escaped palette values in `draw.ts`/`palette.ts`, moved Webview/demo clicks to one-time delegated listeners with `innerHTML` clearing on hide |
+
+### v0.4.0 Audit (Antigravity IDE Quota Pools, Context Budget & 24h/7d Usage)
+
+Zero **CRITICAL** or **HIGH** findings. Every **MEDIUM** and **LOW** finding (plus asynchronous error-handling and UI consistency improvements) from the v0.4.0 AppSec review was remediated prior to release:
+
+| ID | Severity | Finding | Remediation |
+| --- | --- | --- | --- |
+| MEDIUM-1 | Medium | `parseTranscriptTokenEvents` omitted a final `PLANNER_RESPONSE` line lacking trailing `\n` and skipped `decoder.end()` at EOF | Extracted `maybePushTokenEvent` and flushed `remainder + decoder.end()` safely after EOF when `!skipPartialFirstLine` |
+| MEDIUM-2 | Medium | Unbounded `nonNegInt` allowed extreme `1e308` token sums to overflow to `Infinity` and propagate `NaN` into `cacheHitPct` | Clamped `nonNegInt` to `Number.MAX_SAFE_INTEGER` and enforced `Number.isFinite` checks on totals and `cacheHitPct` division |
+| MEDIUM-3 | Medium | `readVarint` float64 arithmetic permitted >32-bit field tags, negative two's-complement int64 credits, and out-of-range reset timestamps | Rejected tags `> 0xffffffff`, enforced `Number.isSafeInteger` on credits, and bounded reset epoch seconds (`<= 10_000_000_000`) |
+| LOW-1 | Low | Mixed-slash Windows UNC inputs (`/\\server\share`) passed prefix checks before `path.normalize()` | Enforced `/^[\\/]{2}/` rejection both before and after `path.normalize()` in `discovery.ts` and `watcher/quota.ts` |
+| LOW-2 | Low | `fileEventCache` used FIFO eviction without refreshing hits, cached without `weekCutoffMs`, and opened up to 60 transcripts concurrently | Switched to true LRU with stored `cutoffMs` and bounded transcript reads to batches of 8 (`MAX_CONCURRENT_READS`) |
+| LOW-3 | Low | Non-fatal UTF-8 decoding converted binary wire-2 submessages into `\uFFFD` display artifacts | Switched to `{ fatal: true }` UTF-8 decoding with byte length limits so non-UTF-8 binary fields are discarded |
+| LOW-4 | Low | Symlinks followed on `stat` before open/DB read and `mtimeMs`-only SQLite cache key could miss same-tick writes | Switched to `lstat` + `handle.stat()` regular-file validation and added DB + WAL byte sizes (`sizeKey`) to `quotaCache` |
+| INFO-1..3 | Info | Unguarded async handlers in `extension.ts`, bar fill direction / `0 cr` mismatch between `main.ts` and `demoEntry.ts`, `.github/**` exclusion | Added `.catch(() => {})` on refresh/webview handlers, aligned Context bar to remaining % and `credits > 0`, and excluded `.github/**` in `.vscodeignore` |
 
 ## Reporting a Vulnerability
 

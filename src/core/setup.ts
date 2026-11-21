@@ -34,6 +34,8 @@ export type Setup = {
   subagentNames: boolean
   contextCost: boolean
   contextWindowTokens: number
+  showQuota: boolean
+  dailyTokenBudget: number
   theme: 'auto' | 'dark' | 'light'
   background: 'solid' | 'transparent'
   colors: Partial<Palette>
@@ -114,6 +116,9 @@ export function setupFrom(options: UserOptions & Readonly<Record<string, unknown
   const cw = typeof options.contextWindowTokens === 'number' && Number.isFinite(options.contextWindowTokens) && options.contextWindowTokens > 0
     ? Math.round(options.contextWindowTokens)
     : 0
+  const dailyBudget = typeof options.dailyTokenBudget === 'number' && Number.isFinite(options.dailyTokenBudget) && options.dailyTokenBudget > 0
+    ? Math.round(options.dailyTokenBudget)
+    : 0
 
   return {
     t: stringsFor(options.language, fallbackLocale),
@@ -128,6 +133,8 @@ export function setupFrom(options: UserOptions & Readonly<Record<string, unknown
     subagentNames: flag(options.subagentNames, true),
     contextCost: flag(options.contextCost, true),
     contextWindowTokens: cw,
+    showQuota: flag(options.showQuota, true),
+    dailyTokenBudget: dailyBudget,
     theme: options.theme === 'dark' || options.theme === 'light' ? options.theme : 'auto',
     background: options.background === 'transparent' ? 'transparent' : 'solid',
     colors: colorsFrom(options.colors),

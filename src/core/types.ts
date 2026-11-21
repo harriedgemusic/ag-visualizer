@@ -32,6 +32,48 @@ export type ModelStepTelemetry = {
   isCompaction?: boolean
 }
 
+export type QuotaModelPool = {
+  id: string
+  label: string
+  remainingPct: number
+  usedPct: number
+  resetAtMs?: number
+  badge?: string
+}
+
+export type QuotaSnapshot = {
+  planName?: string
+  availableCredits?: number
+  minCredits?: number
+  pools: QuotaModelPool[]
+  syncedAtMs: number
+}
+
+export type IdeUsageWindow = {
+  inputTokens: number
+  cacheReadTokens: number
+  outputTokens: number
+  totalTokens: number
+  cacheHitPct: number
+  sessions: number
+  steps: number
+}
+
+export type IdeUsageSummary = {
+  last24h: IdeUsageWindow
+  last7d: IdeUsageWindow
+  computedAtMs: number
+}
+
+export type ContextBudget = {
+  usedTokens: number
+  limitTokens: number
+  remainingTokens: number
+  usedPct: number
+  remainingPct: number
+  isEstimated: boolean
+}
+
 export type Entry = {
   id: string
   station: StationId
@@ -114,6 +156,8 @@ export type UserOptions = {
   coreName?: string
   contextCost?: boolean
   contextWindowTokens?: number
+  showQuota?: boolean
+  dailyTokenBudget?: number
   textSize?: 'caption' | 'footnote' | 'body' | string
   detailLevel?: DetailLevel | string
   subagentNames?: boolean

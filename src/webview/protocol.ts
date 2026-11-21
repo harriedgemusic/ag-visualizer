@@ -2,7 +2,15 @@ import type { SessionBreakdown } from '../core/breakdown'
 import type { StationInspection } from '../core/inspector'
 import type { Palette } from '../core/palette'
 import type { TokenStats, TurnSummary } from '../core/telemetry'
-import type { DetailLevel, EntryDebugPreview, StationId, Status } from '../core/types'
+import type {
+  ContextBudget,
+  DetailLevel,
+  EntryDebugPreview,
+  IdeUsageSummary,
+  QuotaSnapshot,
+  StationId,
+  Status,
+} from '../core/types'
 
 export type FeedRowPayload = {
   id: string
@@ -74,6 +82,11 @@ export type WebviewStateMessage = {
   palette: Palette
   hasContext: boolean
   contextPct?: number
+  showQuota: boolean
+  dailyTokenBudget: number
+  contextBudget?: ContextBudget
+  quota?: QuotaSnapshot
+  ideUsage?: IdeUsageSummary
   tokenStats?: TokenStats
   sparklineSvg?: string
   turnSummaries?: TurnSummary[]
@@ -96,6 +109,14 @@ export type WebviewStateMessage = {
     debugWarning: string
     turnsTitle: string
     cacheHit: string
+    quotaTitle: string
+    remaining: string
+    used: string
+    resetsIn: string
+    ideUsage24h: string
+    ideUsage7d: string
+    dailyBudget: string
+    quotaSynced: string
   }
 }
 

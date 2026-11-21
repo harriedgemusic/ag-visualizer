@@ -359,6 +359,107 @@ export function getWebviewHtml(
       border-radius: 50%;
       flex-shrink: 0;
     }
+    .quota-card {
+      border: 1px solid var(--ag-border);
+      border-radius: 8px;
+      padding: 7px 9px;
+      background: rgba(128, 128, 128, 0.05);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 11px;
+    }
+    .quota-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .quota-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: var(--ag-fg);
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+    }
+    .quota-badges {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      flex-shrink: 0;
+      font-variant-numeric: tabular-nums;
+    }
+    .quota-plan {
+      padding: 1px 5px;
+      border-radius: 4px;
+      border: 1px solid var(--ag-border);
+      color: var(--ag-dim);
+      font-size: 10px;
+    }
+    .quota-pill {
+      font-weight: 600;
+      font-size: 11px;
+    }
+    .quota-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .quota-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .quota-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      font-variant-numeric: tabular-nums;
+    }
+    .quota-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--ag-fg);
+    }
+    .quota-val {
+      flex-shrink: 0;
+      white-space: nowrap;
+      color: var(--ag-dim);
+    }
+    .quota-bar {
+      width: 100%;
+      height: 5px;
+      border-radius: 3px;
+      background: rgba(128, 128, 128, 0.2);
+      overflow: hidden;
+    }
+    .quota-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 180ms ease;
+    }
+    .quota-foot {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 4px 10px;
+      padding-top: 3px;
+      border-top: 1px solid var(--ag-border);
+      color: var(--ag-dim);
+      font-size: 10.5px;
+      font-variant-numeric: tabular-nums;
+    }
     .telemetry-card {
       border: 1px solid var(--ag-border);
       border-radius: 8px;

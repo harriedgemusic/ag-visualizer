@@ -15,6 +15,7 @@ let lastSessionKey = ''
 let openRowId: string | undefined
 let selectedStepId: string | undefined
 let turnsExpanded = false
+let quotaExpanded = true
 let breakdownMode: 'time' | 'tokens' = 'time'
 let copyFlashTimer: number | undefined
 
@@ -74,8 +75,25 @@ function formatCompactMs(ms: number, msUnit: string, secUnit: string): string {
 function formatCompactTokens(tokens: number): string {
   if (!Number.isFinite(tokens) || tokens < 0) return '0'
   if (tokens < 1000) return String(Math.round(tokens))
-  const k = Math.round(tokens / 1000)
-  return k < 1000 ? `${k}k` : `${Math.round(tokens / 1_000_000)}M`
+  if (tokens < 1_000_000) return `${Math.round(tokens / 1000)}k`
+  const m = tokens / 1_000_000
+  return m < 10 ? `${m.toFixed(1)}M` : `${Math.round(m)}M`
+}
+
+function formatCountdown(resetAtMs: number | undefined, nowMs: number): string {
+  if (resetAtMs === undefined || !Number.isFinite(resetAtMs)) return ''
+  const diffMs = resetAtMs - nowMs
+  if (diffMs <= 0) return ''
+  const totalMin = Math.floor(diffMs / 60_000)
+  if (totalMin < 1) return '<1m'
+  const hours = Math.floor(totalMin / 60)
+  const mins = totalMin % 60
+  if (hours >= 24) {
+    const days = Math.floor(hours / 24)
+    const remH = hours % 24
+    return remH > 0 ? `${days}d ${remH}h` : `${days}d`
+  }
+  return hours > 0 ? (mins > 0 ? `${hours}h ${mins}m` : `${hours}h`) : `${mins}m`
 }
 
 function applyThemeVars(s: WebviewStateMessage): void {
@@ -117,6 +135,7 @@ function ensureShell(): {
   btnReplayLive: HTMLButtonElement
   nowWhat: HTMLElement
   nowMeter: HTMLElement
+  quotaWrap: HTMLElement
   breakdownWrap: HTMLElement
   telemetryWrap: HTMLElement
   turnsWrap: HTMLElement
@@ -157,6 +176,7 @@ function ensureShell(): {
         <div class="now-what" id="ag-now-what"></div>
         <div class="now-meter" id="ag-now-meter"></div>
       </div>
+      <div id="ag-quota-wrap" style="display:none"></div>
       <div class="breakdown-wrap" id="ag-breakdown-wrap" style="display:none"></div>
       <div id="ag-telemetry-wrap" style="display:none"></div>
       <div id="ag-turns-wrap" style="display:none"></div>
@@ -178,6 +198,7 @@ function ensureShell(): {
     const btnNextTurn = document.getElementById('ag-next-turn') as HTMLButtonElement
     const btnReplayLive = document.getElementById('ag-replay-live') as HTMLButtonElement
     const breakdownWrap = document.getElementById('ag-breakdown-wrap') as HTMLElement
+    const quotaWrap = document.getElementById('ag-quota-wrap') as HTMLElement
     const turnsWrap = document.getElementById('ag-turns-wrap') as HTMLElement
     const inspectorWrap = document.getElementById('ag-inspector-wrap') as HTMLElement
     const feedEl = document.getElementById('ag-feed') as HTMLElement
@@ -279,6 +300,12 @@ function ensureShell(): {
         station: state.selectedStation === st ? undefined : st,
       })
     })
+    quotaWrap.addEventListener('click', ev => {
+      if (!state) return
+      if (!(ev.target as Element | null)?.closest('#ag-quota-toggle')) return
+      quotaExpanded = !quotaExpanded
+      renderQuota(quotaWrap, state)
+    })
     turnsWrap.addEventListener('click', ev => {
       if (!state) return
       const toggleBtn = (ev.target as Element | null)?.closest('#ag-turns-toggle')
@@ -329,12 +356,116 @@ function ensureShell(): {
     btnReplayLive: document.getElementById('ag-replay-live') as HTMLButtonElement,
     nowWhat: document.getElementById('ag-now-what') as HTMLElement,
     nowMeter: document.getElementById('ag-now-meter') as HTMLElement,
+    quotaWrap: document.getElementById('ag-quota-wrap') as HTMLElement,
     breakdownWrap: document.getElementById('ag-breakdown-wrap') as HTMLElement,
     telemetryWrap: document.getElementById('ag-telemetry-wrap') as HTMLElement,
     turnsWrap: document.getElementById('ag-turns-wrap') as HTMLElement,
     inspectorWrap: document.getElementById('ag-inspector-wrap') as HTMLElement,
     feed: document.getElementById('ag-feed') as HTMLElement,
   }
+}
+
+function renderQuota(wrap: HTMLElement, s: WebviewStateMessage): void {
+  const cb = s.contextBudget
+  const q = s.quota
+  const usage = s.ideUsage
+  const hasPools = Boolean(q && q.pools.length > 0)
+  const hasUsage = Boolean(usage && (usage.last24h.totalTokens > 0 || usage.last7d.totalTokens > 0))
+  if (!s.showQuota || (!cb && !hasPools && !hasUsage)) {
+    wrap.style.display = 'none'
+    wrap.innerHTML = ''
+    return
+  }
+
+  wrap.style.display = 'block'
+  const nowMs = Date.now()
+  const lowestRem = hasPools ? Math.min(...q!.pools.map(p => p.remainingPct)) : cb?.remainingPct
+  const headlineColor =
+    lowestRem === undefined
+      ? s.palette.ash
+      : lowestRem <= 15
+        ? s.palette.red
+        : lowestRem <= 45
+          ? s.palette.accent
+          : s.palette.mem
+  const headlineText = lowestRem !== undefined ? `${lowestRem}% ${s.strings.remaining}` : ''
+
+  const items: string[] = []
+  if (cb) {
+    const ctxRem = Math.max(0, Math.min(100, cb.remainingPct))
+    const ctxColor = ctxRem < 20 ? s.palette.red : ctxRem < 50 ? s.palette.accent : s.palette.mem
+    const estMark = cb.isEstimated ? '~' : ''
+    items.push(`<div class="quota-item">
+      <div class="quota-row">
+        <span class="quota-name">${escapeHtml(s.strings.contextLabel)}: ${escapeHtml(estMark + formatCompactTokens(cb.usedTokens))} / ${escapeHtml(formatCompactTokens(cb.limitTokens))}</span>
+        <span class="quota-val"><strong>${cb.remainingPct}%</strong> ${escapeHtml(s.strings.remaining)} (${escapeHtml(formatCompactTokens(cb.remainingTokens))})</span>
+      </div>
+      <div class="quota-bar"><div class="quota-fill" style="width:${Math.max(ctxRem > 0 ? 2 : 0, ctxRem)}%;background:${escapeHtml(ctxColor)}"></div></div>
+    </div>`)
+  }
+
+  if (hasPools) {
+    for (const pool of q!.pools) {
+      const rem = Math.max(0, Math.min(100, pool.remainingPct))
+      const color = rem < 20 ? s.palette.red : rem < 50 ? s.palette.accent : s.palette.mem
+      const countdown = formatCountdown(pool.resetAtMs, nowMs)
+      const resetPart = countdown ? ` · ${escapeHtml(s.strings.resetsIn)} ${escapeHtml(countdown)}` : ''
+      const badgePart = pool.badge ? ` · ${escapeHtml(pool.badge)}` : ''
+      items.push(`<div class="quota-item">
+        <div class="quota-row">
+          <span class="quota-name">${escapeHtml(pool.label)}${badgePart}</span>
+          <span class="quota-val"><strong>${rem}%</strong> ${escapeHtml(s.strings.remaining)} · ${pool.usedPct}% ${escapeHtml(s.strings.used)}${resetPart}</span>
+        </div>
+        <div class="quota-bar"><div class="quota-fill" style="width:${Math.max(rem > 0 ? 2 : 0, rem)}%;background:${escapeHtml(color)}"></div></div>
+      </div>`)
+    }
+  }
+
+  if (s.dailyTokenBudget > 0 && usage) {
+    const used = usage.last24h.totalTokens
+    const usedPct = Math.min(100, Math.round((used / s.dailyTokenBudget) * 1000) / 10)
+    const remPct = Math.max(0, Math.round((100 - usedPct) * 10) / 10)
+    const remTok = Math.max(0, s.dailyTokenBudget - used)
+    const bColor = remPct < 20 ? s.palette.red : remPct < 50 ? s.palette.accent : s.palette.mem
+    items.push(`<div class="quota-item">
+      <div class="quota-row">
+        <span class="quota-name">${escapeHtml(s.strings.dailyBudget)}: ${escapeHtml(formatCompactTokens(used))} / ${escapeHtml(formatCompactTokens(s.dailyTokenBudget))}</span>
+        <span class="quota-val"><strong>${remPct}%</strong> ${escapeHtml(s.strings.remaining)} (${escapeHtml(formatCompactTokens(remTok))})</span>
+      </div>
+      <div class="quota-bar"><div class="quota-fill" style="width:${Math.max(remPct > 0 ? 2 : 0, remPct)}%;background:${escapeHtml(bColor)}"></div></div>
+    </div>`)
+  }
+
+  let footHtml = ''
+  if (hasUsage || (q && q.availableCredits !== undefined && q.availableCredits > 0)) {
+    const u24 = usage?.last24h
+    const u7 = usage?.last7d
+    const leftBit = u24
+      ? `${escapeHtml(s.strings.ideUsage24h)}: ${escapeHtml(formatCompactTokens(u24.totalTokens))} (in ${escapeHtml(formatCompactTokens(u24.inputTokens))} · ${escapeHtml(s.strings.cacheHit)} ${u24.cacheHitPct}% · out ${escapeHtml(formatCompactTokens(u24.outputTokens))})`
+      : ''
+    const rightBits: string[] = []
+    if (u7 && u7.totalTokens > 0) {
+      rightBits.push(`${escapeHtml(s.strings.ideUsage7d)}: ${escapeHtml(formatCompactTokens(u7.totalTokens))} (${u7.sessions}s)`)
+    }
+    if (q?.availableCredits !== undefined && q.availableCredits > 0) {
+      rightBits.push(`${q.availableCredits} cr`)
+    }
+    footHtml = `<div class="quota-foot"><span>${leftBit}</span><span>${rightBits.join(' · ')}</span></div>`
+  }
+
+  wrap.innerHTML = `<div class="quota-card">
+    <div class="quota-head">
+      <button type="button" class="quota-toggle" id="ag-quota-toggle">
+        <span>${quotaExpanded ? '▾' : '▸'}</span>
+        <span>${escapeHtml(s.strings.quotaTitle)}</span>
+      </button>
+      <span class="quota-badges">
+        ${q?.planName ? `<span class="quota-plan">${escapeHtml(q.planName)}</span>` : ''}
+        ${headlineText ? `<span class="quota-pill" style="color:${escapeHtml(headlineColor)}">${escapeHtml(headlineText)}</span>` : ''}
+      </span>
+    </div>
+    ${quotaExpanded ? `<div class="quota-list">${items.join('')}</div>${footHtml}` : ''}
+  </div>`
 }
 
 function renderBreakdown(wrap: HTMLElement, s: WebviewStateMessage): void {
@@ -693,6 +824,7 @@ function render(s: WebviewStateMessage): void {
   ui.nowWhat.textContent = s.nowWhat
   ui.nowMeter.textContent = s.nowMeter
 
+  renderQuota(ui.quotaWrap, s)
   renderBreakdown(ui.breakdownWrap, s)
   renderTelemetry(ui.telemetryWrap, s)
   renderTurns(ui.turnsWrap, s)
