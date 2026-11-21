@@ -46,7 +46,15 @@ A calm, passive, privacy-first live visual map of **Antigravity IDE** agent acti
 
 ## Installation in Antigravity IDE
 
-### Manual Installation from VSIX (Recommended)
+### Install from Open VSX Marketplace (Easiest)
+
+Search for **`Antigravity Work Map`** (`ag-visualizer.ag-visualizer`) directly inside **Antigravity IDE** → **Extensions** (`Cmd+Shift+X` / `Ctrl+Shift+X`), open [Open VSX Registry](https://open-vsx.org/extension/ag-visualizer/ag-visualizer), or install via CLI:
+
+```bash
+"/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --install-extension ag-visualizer.ag-visualizer
+```
+
+### Manual Installation from VSIX
 
 1. Download **`ag-visualizer-0.3.1.vsix`** from [GitHub Releases](https://github.com/harriedgemusic/ag-visualizer/releases/latest).
 2. In **Antigravity IDE**, open the **Extensions** panel (`Cmd+Shift+X` / `Ctrl+Shift+X`), click the **`⋯`** menu at the top-right, choose **Install from VSIX...**, and select `ag-visualizer-0.3.1.vsix`.
