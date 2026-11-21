@@ -178,9 +178,14 @@ describe('classifyTool & privacy helpers', () => {
     )
   })
 
-  it('shortens Antigravity and Claude model names', () => {
+  it('shortens Antigravity and Claude model names within 24 chars and handles prototype keys in colors', () => {
     assert.equal(shortModel('gemini-4-neon-high'), 'neon-high')
     assert.equal(shortModel('gemini-4-hydrogen-medium'), 'hydrogen-med')
     assert.equal(shortModel('claude-sonnet-4-5'), 'sonnet 4.5')
+    assert.ok(shortModel('claude-superlongfamilynamehere-12-34').length <= 24)
+
+    const protoSetup = setupFrom({ colors: { constructor: '#112233', toString: '#445566', accent: '#abc' } })
+    assert.equal(protoSetup.colors.accent, '#aabbcc')
+    assert.equal(Object.keys(protoSetup.colors).length, 1)
   })
 })

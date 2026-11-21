@@ -327,7 +327,8 @@ export class TranscriptReducer {
     }
 
     if (stepType === 'PLANNER_RESPONSE') {
-      const model = typeof step.model === 'string' && step.model.trim() !== '' ? step.model.trim() : undefined
+      const rawModel = typeof step.model === 'string' && step.model.trim() !== '' ? clean(step.model, 80) : undefined
+      const model = rawModel && rawModel !== '' ? rawModel : undefined
       const totalTokens = (step.input_tokens ?? 0) + (step.cache_read_tokens ?? 0)
 
       if (!isSubagentStep) {
@@ -388,7 +389,7 @@ export class TranscriptReducer {
 
       const queue = this._pendingByOrigin.get(origin) ?? []
       for (const tc of calls) {
-        const name = typeof tc.name === 'string' ? tc.name : 'tool'
+        const name = typeof tc.name === 'string' ? clean(tc.name, 64) || 'tool' : 'tool'
         const args = tc.args && typeof tc.args === 'object' ? tc.args : {}
         const classified = classifyTool(name, args, this._setup)
         const id = this.nextId('call')

@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { describe, it } from 'node:test'
+import { drawBrailleMap, formatMarkdownReport } from '../src/core/braille'
+import { computeBreakdown } from '../src/core/breakdown'
 import { classifyTool } from '../src/core/classify'
 import { drawMap } from '../src/core/draw'
 import { foldRows } from '../src/core/feed'
+import { inspectStation } from '../src/core/inspector'
 import { reduceTranscript, TranscriptReducer } from '../src/core/reducer'
+import { sliceBoardAt } from '../src/core/replay'
 import { setupFrom } from '../src/core/setup'
 import type { Board, TranscriptStep } from '../src/core/types'
 
@@ -137,13 +141,24 @@ describe('Core Principles', () => {
       },
     ]
 
+    const ts = Date.parse('2026-11-21T12:00:04Z')
     const board = reduceTranscript(steps, setup)
-    const svg = drawMap(board, Date.parse('2026-11-21T12:00:04Z'), setup)
+    const svg = drawMap(board, ts, setup, { selectedStation: 'files' })
     const rows = foldRows(board.entries, 16, true)
+    const breakdown = computeBreakdown(board, setup)
+    const inspection = inspectStation(board, 'files', setup)
+    const replayed = sliceBoardAt(board, Math.max(1, board.entries.length - 1), ts)
+    const braille = drawBrailleMap(board, ts, setup)
+    const markdown = formatMarkdownReport(board, ts, setup)
 
     assert.ok(!JSON.stringify(board).includes(CANARY), 'Board leaked canary')
     assert.ok(!svg.includes(CANARY), 'SVG leaked canary')
     assert.ok(!JSON.stringify(rows).includes(CANARY), 'Feed rows leaked canary')
+    assert.ok(!JSON.stringify(breakdown).includes(CANARY), 'Breakdown leaked canary')
+    assert.ok(!JSON.stringify(inspection).includes(CANARY), 'Inspector leaked canary')
+    assert.ok(!JSON.stringify(replayed).includes(CANARY), 'Replay leaked canary')
+    assert.ok(!braille.includes(CANARY), 'Braille map leaked canary')
+    assert.ok(!markdown.includes(CANARY), 'Markdown report leaked canary')
   })
 
   it('Principle 3: respects strict CPU time budgets', () => {

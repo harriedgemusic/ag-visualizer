@@ -20,7 +20,7 @@ Every raw tool call contains sensitive payloads: file contents, search patterns,
 - Search tools & web searches: tool/category name only, never queries or patterns
 - Subagents: short `Role` / `TypeName` only, never `Prompt`
 
-Verified by the privacy canary test (`CANARY_SECRET_999` across 40+ tool payloads) in `test/principles.test.ts` and enforced statically by the TypeScript AST scanner in `scripts/check-surface.mjs` (zero network APIs, zero child processes, zero filesystem writes).
+Verified by the privacy canary test (`CANARY_SECRET_999` across 40+ tool payloads, including `drawMap`, `foldRows`, `computeBreakdown`, `inspectStation`, `sliceBoardAt`, `drawBrailleMap`, and `formatMarkdownReport`) in `test/principles.test.ts` and enforced statically by the TypeScript AST scanner in `scripts/check-surface.mjs` (zero network APIs, zero child processes, zero filesystem writes).
 
 ## 3. It costs next to nothing
 

@@ -250,6 +250,119 @@ export function getWebviewHtml(
     .row.is-moment .row-meta {
       opacity: 0.65;
     }
+    .btn.is-active {
+      border-color: var(--ag-accent);
+      color: var(--ag-accent);
+    }
+    .braille-stage {
+      margin: 0;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid var(--ag-border);
+      font-family: inherit;
+      font-size: 10.5px;
+      line-height: 1.2;
+      overflow-x: auto;
+      white-space: pre;
+      color: var(--ag-fg);
+      background: rgba(0, 0, 0, 0.16);
+    }
+    .replay-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 2px;
+      font-size: 11px;
+    }
+    .replay-slider {
+      flex: 1 1 auto;
+      min-width: 60px;
+      accent-color: var(--ag-accent);
+      cursor: pointer;
+    }
+    .replay-live {
+      min-width: 54px;
+      font-variant-numeric: tabular-nums;
+    }
+    .breakdown-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 4px 2px;
+    }
+    .breakdown-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--ag-dim);
+      font-size: 11px;
+    }
+    .breakdown-bar {
+      display: flex;
+      height: 7px;
+      border-radius: 4px;
+      overflow: hidden;
+      background: rgba(128, 128, 128, 0.16);
+      gap: 1px;
+    }
+    .breakdown-seg {
+      height: 100%;
+      min-width: 4px;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      opacity: 0.85;
+      transition: opacity 120ms ease;
+    }
+    .breakdown-seg:hover,
+    .breakdown-seg.is-selected {
+      opacity: 1;
+      outline: 1px solid var(--ag-fg);
+    }
+    .inspector-card {
+      border: 1px solid var(--ag-border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: rgba(128, 128, 128, 0.06);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 11px;
+    }
+    .inspector-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .inspector-title {
+      font-weight: 600;
+      color: var(--ag-fg);
+    }
+    .inspector-metrics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--ag-dim);
+      font-variant-numeric: tabular-nums;
+    }
+    .inspector-top {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .inspector-top-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--ag-dim);
+    }
+    .inspector-top-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>

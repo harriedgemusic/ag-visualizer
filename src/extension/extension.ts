@@ -1,12 +1,17 @@
 import * as vscode from 'vscode'
+import { drawBrailleMap, formatMarkdownReport } from '../core/braille'
+import { computeBreakdown } from '../core/breakdown'
 import { formatMs, formatTokens } from '../core/classify'
+import { DEMO_TIMELINE } from '../core/demo'
 import { drawMap } from '../core/draw'
 import { foldRows, nowParts } from '../core/feed'
+import { filterBoardByStation, inspectStation } from '../core/inspector'
 import { resolvePalette } from '../core/palette'
 import { TranscriptReducer } from '../core/reducer'
+import { sliceBoardAt, turnIndices } from '../core/replay'
+import { STATIONS } from '../core/setup'
 import type { Setup } from '../core/setup'
-import { DEMO_TIMELINE } from '../core/demo'
-import type { Board, SessionSummary } from '../core/types'
+import type { Board, SessionSummary, StationId } from '../core/types'
 import { listSessions, pickAutoSession, resolveAntigravityDirs } from '../watcher/discovery'
 import { TranscriptTailer } from '../watcher/tailer'
 import type { FeedRowPayload, WebviewCommandMessage, WebviewStateMessage } from '../webview/protocol'
@@ -15,9 +20,11 @@ import { getWebviewHtml } from './webviewHtml'
 
 const ZOOM_KEY = 'agVisualizer.zoom'
 const HIDDEN_KEY = 'agVisualizer.hidden'
+const VIEW_MODE_KEY = 'agVisualizer.viewMode'
 const LONG_LABEL = 44
+const VALID_STATION_IDS = new Set<string>(STATIONS.map(s => s.id))
 
-function buildRows(board: Board, setup: Setup): FeedRowPayload[] {
+function buildRows(board: Board, setup: Setup, stationFilter?: StationId): FeedRowPayload[] {
   const { t } = setup
   const turnMs = new Map<string, number>()
   let askedAt: number | undefined
@@ -31,7 +38,8 @@ function buildRows(board: Board, setup: Setup): FeedRowPayload[] {
     }
   }
 
-  return foldRows(board.entries, 16, setup.subagentNames).map(row => {
+  const filtered = filterBoardByStation(board, stationFilter)
+  return foldRows(filtered, 16, setup.subagentNames).map(row => {
     const e = row.entry
     const whole = turnMs.get(e.id)
     const isRunning = e.endedAt === undefined || e.status === 'run'
@@ -83,7 +91,11 @@ class MapController implements vscode.Disposable {
   private _demoPaused = false
   private _discoveryTimer: NodeJS.Timeout | null = null
   private _refreshing = false
+  private _pendingRefresh = false
+  private _pendingForceBroadcast = false
   private _lastSessionFingerprint = ''
+  private _selectedStation: StationId | undefined
+  private _replayIndex: number | undefined
   private _statusBar: vscode.StatusBarItem
   private _targets = new Set<vscode.Webview>()
   private _targetDisposables = new Map<vscode.Webview, vscode.Disposable[]>()
@@ -133,6 +145,10 @@ class MapController implements vscode.Disposable {
     return this._context.globalState.get<unknown>(HIDDEN_KEY, false) === true
   }
 
+  private get viewMode(): 'svg' | 'braille' {
+    return this._context.globalState.get<unknown>(VIEW_MODE_KEY, 'svg') === 'braille' ? 'braille' : 'svg'
+  }
+
   private reloadConfig(): void {
     this._setup = buildSetup()
     this._tailer.updateSetup(this._setup)
@@ -142,7 +158,11 @@ class MapController implements vscode.Disposable {
   }
 
   async refreshSessions(forceBroadcast = false): Promise<void> {
-    if (this._refreshing) return
+    if (this._refreshing) {
+      this._pendingRefresh = true
+      if (forceBroadcast) this._pendingForceBroadcast = true
+      return
+    }
     this._refreshing = true
     try {
       const opts = readUserOptions()
@@ -166,6 +186,11 @@ class MapController implements vscode.Disposable {
         await this._tailer.attach(chosen, this._sessions)
       }
 
+      if (prevActiveId !== this._tailer.activeSessionId) {
+        this._selectedStation = undefined
+        this._replayIndex = undefined
+      }
+
       const fingerprint = [
         this._mode,
         this._tailer.activeSessionId ?? '',
@@ -181,6 +206,12 @@ class MapController implements vscode.Disposable {
       }
     } finally {
       this._refreshing = false
+      if (this._pendingRefresh) {
+        const nextForce = this._pendingForceBroadcast
+        this._pendingRefresh = false
+        this._pendingForceBroadcast = false
+        void this.refreshSessions(nextForce)
+      }
     }
   }
 
@@ -227,10 +258,12 @@ class MapController implements vscode.Disposable {
   }
 
   toggleDemo(): void {
+    this._selectedStation = undefined
+    this._replayIndex = undefined
     if (this._mode === 'demo') {
       this.stopDemo()
       this._mode = 'auto'
-      void this.refreshSessions()
+      void this.refreshSessions(true)
     } else {
       this.startDemo()
     }
@@ -253,6 +286,8 @@ class MapController implements vscode.Disposable {
   }
 
   async selectSession(id: string): Promise<void> {
+    this._replayIndex = undefined
+    this._selectedStation = undefined
     if (id === 'demo') {
       this.startDemo()
       return
@@ -265,11 +300,13 @@ class MapController implements vscode.Disposable {
       this._mode = 'pinned'
       this._pinnedSessionId = id
     }
-    await this.refreshSessions()
+    await this.refreshSessions(true)
   }
 
   private startDemo(): void {
     this.stopDemo()
+    this._replayIndex = undefined
+    this._selectedStation = undefined
     this._mode = 'demo'
     this._demoReducer.reset()
     this._demoIdx = 0
@@ -366,6 +403,39 @@ class MapController implements vscode.Disposable {
       case 'openPanel':
         this.openPanel()
         break
+      case 'selectStation': {
+        if (msg.station === undefined) {
+          this._selectedStation = undefined
+        } else if (typeof msg.station === 'string' && VALID_STATION_IDS.has(msg.station)) {
+          this._selectedStation = msg.station as StationId
+        } else {
+          return
+        }
+        this.broadcast()
+        break
+      }
+      case 'setViewMode':
+        if (msg.viewMode !== 'svg' && msg.viewMode !== 'braille') return
+        await this._context.globalState.update(VIEW_MODE_KEY, msg.viewMode)
+        this.broadcast()
+        break
+      case 'setReplayIndex':
+        if (msg.index === undefined) {
+          this._replayIndex = undefined
+        } else if (typeof msg.index === 'number' && Number.isFinite(msg.index)) {
+          const floored = Math.max(0, Math.floor(msg.index))
+          const total = this.currentBoard().entries.length
+          this._replayIndex = floored >= total ? undefined : floored
+        } else {
+          return
+        }
+        this.broadcast()
+        break
+      case 'copyMarkdown': {
+        const msgState = this.buildStateMessage()
+        await vscode.env.clipboard.writeText(msgState.markdownReport)
+        break
+      }
     }
   }
 
@@ -374,19 +444,54 @@ class MapController implements vscode.Disposable {
   }
 
   private buildStateMessage(): WebviewStateMessage {
-    const board = this.currentBoard()
+    const rawBoard = this.currentBoard()
+    if (this._replayIndex !== undefined && this._replayIndex >= rawBoard.entries.length) {
+      this._replayIndex = undefined
+    }
+    const now = Date.now()
+    const turns = turnIndices(rawBoard.entries)
+    const frame = sliceBoardAt(rawBoard, this._replayIndex, now)
+    const board = frame.board
+    const renderNow = frame.cursor.renderNow
+
     const lightSurface = isLightTheme(vscode.window.activeColorTheme)
     const effectiveTheme =
       this._setup.theme === 'auto' ? (lightSurface ? 'light' : 'dark') : this._setup.theme
     const renderSetup: Setup = { ...this._setup, theme: effectiveTheme }
-    const now = Date.now()
-    const svg = drawMap(board, now, renderSetup)
+    const svg = drawMap(board, renderNow, renderSetup, {
+      selectedStation: this._selectedStation,
+    })
+    const brailleMap = drawBrailleMap(board, renderNow, renderSetup)
+    const markdownReport = formatMarkdownReport(board, renderNow, renderSetup)
+    const breakdown = computeBreakdown(board, this._setup)
+    const fullInspection = this._selectedStation
+      ? inspectStation(board, this._selectedStation, this._setup)
+      : undefined
+    const inspection = fullInspection
+      ? {
+          station: fullInspection.station,
+          stationName: fullInspection.stationName,
+          status: fullInspection.status,
+          count: fullInspection.count,
+          callSharePct: fullInspection.callSharePct,
+          runningCount: fullInspection.runningCount,
+          faultCount: fullInspection.faultCount,
+          tokens: fullInspection.tokens,
+          totalTimeMs: fullInspection.totalTimeMs,
+          avgTimeMs: fullInspection.avgTimeMs,
+          maxTimeMs: fullInspection.maxTimeMs,
+          topLabels: fullInspection.topLabels,
+        }
+      : undefined
     const parts = nowParts(board, this._setup.t)
     const palette = resolvePalette(this._setup, lightSurface)
 
     return {
       type: 'state',
       svg,
+      brailleMap,
+      markdownReport,
+      viewMode: this.viewMode,
       nowWhat: parts.what,
       nowMeter: parts.meter,
       mode: this._mode,
@@ -400,7 +505,18 @@ class MapController implements vscode.Disposable {
           running: s.status === 'CASCADE_RUN_STATUS_RUNNING' || Boolean(s.notFullyIdle),
           mtimeMs: s.mtimeMs,
         })),
-      rows: buildRows(board, this._setup),
+      rows: buildRows(board, this._setup, this._selectedStation),
+      breakdown,
+      selectedStation: this._selectedStation,
+      inspection,
+      replay: {
+        index: frame.cursor.index,
+        total: frame.cursor.total,
+        isLive: frame.cursor.isLive,
+        turnIndices: turns,
+        turnNumber: frame.cursor.turnNumber,
+        totalTurns: frame.cursor.totalTurns,
+      },
       zoom: this.zoom,
       hidden: this.hidden,
       layout: this._setup.layout,
@@ -409,9 +525,8 @@ class MapController implements vscode.Disposable {
       isLightSurface: lightSurface,
       textSize: this._setup.textSize,
       palette,
-      hasContext: board.context !== undefined,
-      model: board.model,
-      contextPct: board.context,
+      hasContext: board.context !== undefined && Number.isFinite(board.context),
+      contextPct: board.context !== undefined && Number.isFinite(board.context) ? board.context : undefined,
       strings: {
         title: this._setup.t.title,
         zoomOut: this._setup.t.zoomOut,
@@ -432,7 +547,9 @@ class MapController implements vscode.Disposable {
   private updateStatusBar(board: Board): void {
     const running = board.entries.filter(e => e.status === 'run').length
     const bits = [this._setup.core]
-    if (board.context !== undefined) bits.push(`${Math.round(board.context)}%`)
+    if (board.context !== undefined && Number.isFinite(board.context)) {
+      bits.push(`${Math.max(0, Math.min(100, Math.round(board.context)))}%`)
+    }
     if (running > 0) bits.push(`${running} ${this._setup.t.running}`)
     if (this._mode === 'demo') bits.push(this._setup.t.demoLabel)
     this._statusBar.text = `$(pulse) ${bits.join(' · ')}`

@@ -151,12 +151,13 @@ type Scene = {
   shift: number
   spent: Board['spent'] | undefined
   formatTokens: (n: number) => string
+  selectedStation?: StationId
 }
 
 function station(
   s: (typeof STATIONS)[number],
   i: number,
-  { entries, board, now, c, names, isStill, shift, spent, formatTokens }: Scene,
+  { entries, board, now, c, names, isStill, shift, spent, formatTokens, selectedStation }: Scene,
 ): { under: string; over: string } {
   const p = place(i, shift)
   const x = n1(p.x)
@@ -169,9 +170,9 @@ function station(
   const lastBad = [...atStation].reverse().find(isBad)
   const badAt = lastBad === undefined ? -Infinity : (lastBad.endedAt ?? lastBad.startedAt)
   const fade = now - lastAt
-  const isAlarm = lastBad !== undefined && now - badAt < ALARM_MS && badAt >= lastAt
+  const isAlarm = lastBad !== undefined && now - badAt >= 0 && now - badAt < ALARM_MS && badAt >= lastAt
   const span = isAlarm ? ALARM_MS : GLOW_MS
-  const isLit = running.length > 0 || (latest !== undefined && fade < span)
+  const isLit = running.length > 0 || (latest !== undefined && fade >= 0 && fade < span)
   const count = board.counts[s.id] ?? 0
   const [main, hot] = s.id === 'memory' ? [c.mem, c.memHot] : [c.accent, c.hot]
   const color = isAlarm ? c.red : main
@@ -211,10 +212,17 @@ function station(
         : ''
   const glyphColor = isAlarm ? c.red : isLit ? hot : s.id === 'memory' && count > 0 ? main : c.ash
   const rim = `paint-order="stroke" stroke="${c.ground}" stroke-width="3.5" stroke-linejoin="round"`
+  const isSelected = selectedStation === s.id
+  const selectedRing = isSelected
+    ? `<circle cx="${x}" cy="${y}" r="${NODE + 4}" fill="none" stroke="${c.bone}" stroke-width="1.5" stroke-dasharray="3 2"/>`
+    : ''
   let over =
-    `<circle cx="${x}" cy="${y}" r="${NODE}" fill="${c.raised}" stroke="${c.line}" stroke-width="1.2"/>${cooling}` +
+    `<g class="ag-station" data-station="${s.id}" style="cursor:pointer">` +
+    `<circle cx="${x}" cy="${y}" r="${NODE + 6}" fill="transparent"/>` +
+    selectedRing +
+    `<circle cx="${x}" cy="${y}" r="${NODE}" fill="${c.raised}" stroke="${isSelected ? c.bone : c.line}" stroke-width="${isSelected ? '1.6' : '1.2'}"/>${cooling}` +
     `<path transform="translate(${x} ${y})" d="${s.icon}" fill="none" stroke="${glyphColor}" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>` +
-    `<text x="${x}" y="${n1(p.y + NODE + 15)}" text-anchor="middle" ${FONT} font-size="11.5" ${rim} fill="${isLit || isAlarm ? c.bone : c.ash}">${escapeXml(names[s.id])}</text>`
+    `<text x="${x}" y="${n1(p.y + NODE + 15)}" text-anchor="middle" ${FONT} font-size="11.5" ${rim} fill="${isLit || isAlarm || isSelected ? c.bone : c.ash}">${escapeXml(names[s.id])}</text>`
 
   if (count > 0) {
     const pushed = s.id === 'memory' ? Math.min(count, board.pushed ?? 0) : 0
@@ -222,7 +230,7 @@ function station(
     const figures =
       pushed === 0 ? String(count) : `${asked > 0 ? `${asked} ` : ''}<tspan fill="${main}">↓${pushed}</tspan>`
     const tokens = spent?.[s.id] ?? 0
-    const cost = tokens > 0 ? ` · ${formatTokens(tokens)}` : ''
+    const cost = tokens > 0 && Number.isFinite(tokens) ? ` · ${escapeXml(formatTokens(tokens))}` : ''
     over += `<text x="${x}" y="${n1(p.y + NODE + 28)}" text-anchor="middle" ${FONT} font-size="9.5" ${rim} fill="${c.dim}">${figures}${cost}</text>`
   }
 
@@ -238,20 +246,24 @@ function station(
       `<circle cx="${n1(p.x - corner)}" cy="${n1(p.y - corner)}" r="7.5" fill="${c.red}"/>` +
       `<text x="${n1(p.x - corner)}" y="${n1(p.y - corner + 3.1)}" text-anchor="middle" ${FONT} font-size="9" font-weight="700" fill="${c.ground}">${faults > 99 ? '99+' : faults}</text>`
   }
+  over += '</g>'
   return { under, over }
 }
 
 export type DrawHelpers = {
-  shortModel: (model: string) => string
-  formatTokens: (tokens: number) => string
+  shortModel?: (model: string) => string
+  formatTokens?: (tokens: number) => string
+  selectedStation?: StationId
 }
 
 export function drawMap(
   board: Board,
   now: number,
   setup: Setup,
-  helpers: DrawHelpers = { shortModel, formatTokens },
+  helpers: DrawHelpers = {},
 ): string {
+  const shortModelFn = helpers.shortModel ?? shortModel
+  const formatTokensFn = helpers.formatTokens ?? formatTokens
   const c: Palette = { ...(setup.theme === 'light' ? LIGHT : DARK), ...setup.colors }
   const shift = setup.layout === 'you-bottom' ? STATIONS.length / 2 : 0
   const core: Point = { x: CX, y: CY }
@@ -260,11 +272,21 @@ export function drawMap(
   const olderRunning = board.entries.filter(e => e.status === 'run' && !tailIds.has(e.id))
   const recent = olderRunning.length > 0 ? [...olderRunning, ...tail40] : tail40
   const isStill = setup.motion === 'reduced'
-  const flights = isStill ? [] : recent.filter(e => now - e.startedAt < PULSE_MS + RIPPLE_MS).slice(-14)
+  const flights = isStill
+    ? []
+    : recent.filter(e => now - e.startedAt >= 0 && now - e.startedAt < PULSE_MS + RIPPLE_MS).slice(-14)
   const returns = isStill
     ? []
-    : recent.filter(e => e.endedAt !== undefined && e.from !== 'inbound' && now - e.endedAt < PULSE_MS + RIPPLE_MS).slice(-14)
-  const beams = recent.filter(e => now - e.startedAt < GLOW_MS / 2).slice(-10)
+    : recent
+        .filter(
+          e =>
+            e.endedAt !== undefined &&
+            e.from !== 'inbound' &&
+            now - e.endedAt >= 0 &&
+            now - e.endedAt < PULSE_MS + RIPPLE_MS,
+        )
+        .slice(-14)
+  const beams = recent.filter(e => now - e.startedAt >= 0 && now - e.startedAt < GLOW_MS / 2).slice(-10)
   const anyRunning = recent.some(e => e.status === 'run')
   const agentsAt = place(indexOf('agents'), shift)
   const isBad = (e: Entry): boolean => e.status === 'block' || e.status === 'err'
@@ -299,7 +321,8 @@ export function drawMap(
     isStill,
     shift,
     spent: setup.contextCost ? board.spent : undefined,
-    formatTokens: helpers.formatTokens,
+    formatTokens: formatTokensFn,
+    selectedStation: helpers.selectedStation,
   }
   const drawn = STATIONS.map((s, i) => station(s, i, scene))
   body += drawn.map(d => d.under).join('')
@@ -360,7 +383,7 @@ export function drawMap(
         `<animate attributeName="opacity" values=".05;${anyRunning ? '.24' : '.12'};.05" ${breath}/></circle>`) +
     `<circle cx="${CX}" cy="${CY}" r="${CORE}" fill="${c.raised}" stroke="${anyRunning ? c.accent : c.line}" stroke-width="1.3"/>`
 
-  if (board.context !== undefined) {
+  if (board.context !== undefined && Number.isFinite(board.context)) {
     const full = Math.max(0, Math.min(100, Math.round(board.context)))
     const ring = `cx="${CX}" cy="${CY}" r="${CORE + 5}" fill="none" stroke-width="2.2"`
     body +=
@@ -373,7 +396,7 @@ export function drawMap(
   const isSwitching = switchAge >= 0 && switchAge < SWITCH_MS
   body += `<text x="${CX}" y="${CY + (board.model === undefined ? 6 : 1)}" text-anchor="middle" ${FONT} font-size="${n1(coreSize)}" letter-spacing="${n1(coreSize * 0.147)}" fill="${c.bone}">${escapeXml(setup.core)}</text>`
   if (board.model !== undefined) {
-    body += `<text x="${CX}" y="${CY + 17}" text-anchor="middle" ${FONT} font-size="9" fill="${isSwitching ? c.hot : c.ash}">${escapeXml(helpers.shortModel(board.model))}</text>`
+    body += `<text x="${CX}" y="${CY + 17}" text-anchor="middle" ${FONT} font-size="9" fill="${isSwitching ? c.hot : c.ash}">${escapeXml(shortModelFn(board.model))}</text>`
   }
 
   if (isSwitching && !isStill) {
@@ -392,7 +415,7 @@ export function drawMap(
   }
 
   const done = recent.filter(e => e.mark === 'done').pop()
-  if (done !== undefined && now - done.startedAt < DONE_MS && !isStill) {
+  if (done !== undefined && now - done.startedAt >= 0 && now - done.startedAt < DONE_MS && !isStill) {
     const leaving = `begin="${clock(done.startedAt - now)}" dur="${clock(DONE_MS)}" fill="freeze"`
     body +=
       `<circle cx="${CX}" cy="${CY}" r="${CORE}" fill="none" stroke="${c.bone}" stroke-width="1.6" opacity="0">` +

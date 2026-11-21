@@ -23,5 +23,6 @@ Raw lines are parsed transiently to extract only:
 
 ## What `ag-visualizer` stores
 
-- **In memory (during the IDE session)**: up to 80 sanitized `Entry` records, station counts, active fault counts, context percentage, and active subagent indicators.
-- **In `vscode.ExtensionContext.globalState`**: only two UI preferences — `zoom` (validated finite number between `0.6` and `1.4`) and `hidden` (`true`/`false`). No conversation IDs, file paths, or session contents are persisted across restarts.
+- **In memory (during the IDE session)**: up to 80 sanitized `Entry` records, station counts, active fault counts, context percentage, active subagent indicators, and derived session-local inspector/breakdown/replay views (never persisted).
+- **In `vscode.ExtensionContext.globalState`**: only three UI preferences — `zoom` (validated finite number between `0.6` and `1.4`), `hidden` (`true`/`false`), and `viewMode` (`"svg"` or `"braille"`). No conversation IDs, file paths, or session contents are persisted across restarts.
+- **Clipboard (`📋` Copy Markdown Snapshot)**: only invoked explicitly on user click, copying the redacted Braille map, station counts/tokens table, and sanitized recent rows.

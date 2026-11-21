@@ -9,17 +9,18 @@
    - Reads `~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl` strictly with `fs.promises.open(path, 'r')` in bounded 64 KB chunks (`MAX_INITIAL_TAIL_BYTES = 4 MB`, `MAX_LINE_BYTES = 2 MB`, `StringDecoder('utf8')`).
    - Reads `conversation_summaries.db` strictly with Node's `node:sqlite` `{ readOnly: true, timeout: 250 }` and `PRAGMA query_only = ON`.
 2. **Zero Network & Zero Subprocess Surface**:
-   - Enforced on every build via TypeScript AST static analysis in [`scripts/check-surface.mjs`](scripts/check-surface.mjs).
-   - `src/core/**` has zero Node.js, VS Code, filesystem, or network imports.
-   - All of `src/**` bans `fetch`, `WebSocket`, `XMLHttpRequest`, `http`/`https`/`net`/`dns`/`tls`/`dgram`, `child_process`/`worker_threads`, `process.getBuiltinModule`, filesystem write/delete methods, and non-read-only `fs.open` / `DatabaseSync`.
-3. **Webview & SVG Isolation**:
+   - Enforced on every build via TypeScript AST static analysis in `scripts/check-surface.mjs`.
+   - `src/core/**` has zero Node.js, VS Code, filesystem, network, or external imports, and relative imports cannot escape `src/core/`.
+   - All of `src/**` bans `fetch`, `WebSocket`, `XMLHttpRequest`, `EventSource`, `eval`, `new Function`, `http`/`https`/`http2`/`net`/`dns`/`tls`/`dgram`, `child_process`/`worker_threads`/`module`/`vm`/`inspector`, `process.getBuiltinModule`/`binding`/`dlopen`, filesystem write/delete methods, and non-read-only `fs.open`/`openSync` or `DatabaseSync`.
+3. **Webview, SVG & Markdown Isolation**:
    - Webview HTML enforces strict CSP: `default-src 'none'; base-uri 'none'; form-action 'none'; style-src 'unsafe-inline'; script-src 'nonce-<crypto-random>';` using `crypto.randomBytes(18)`.
-   - All user/model/DB strings are escaped (`escapeXml` for SVG, `escapeHtml` / `textContent` for HTML) and sanitized via `clean()` (stripping control, bidi, and zero-width characters).
+   - All user/model/DB strings are escaped (`escapeXml` for SVG, `escapeHtml` / `textContent` for HTML, full metacharacter + backslash escaping in `escapeMd` with dynamic fence sizing for Markdown) and sanitized via `clean()`.
+   - Station IDs and Webview commands are allowlist-validated (`VALID_STATION_IDS`, `Number.isFinite` bounds, `Object.hasOwn` lookup guards).
    - `agVisualizer.antigravityDataDir` is `"scope": "application"` and `"restricted": true`, and rejects Windows UNC (`\\...` / `//...`) and relative paths to prevent untrusted workspaces from triggering SMB/NTLM lookups or redirecting transcript reads.
 
 ## AppSec Audit Summary
 
-An internal Information Security audit was performed across the entire codebase (`src/`, `scripts/`, `demo/`, `test/`, `package.json`, `.vscodeignore`). All findings were remediated and covered by automated regression tests:
+### v0.1.0 / v0.1.1 Audit
 
 | ID | Severity | Finding | Remediation |
 | --- | --- | --- | --- |
@@ -35,6 +36,18 @@ An internal Information Security audit was performed across the entire codebase 
 | MEDIUM-6 | Medium | `NaN` zoom corrupted `globalState`; unhandled `postMessage` rejections | Added strict runtime validation on all webview messages and `postMessage` `.catch()` cleanup |
 | LOW-1..4 | Low | Listener disposal, refresh re-entrancy, idle 2s SVG rebuilds, `<select>` quote reset, >40-entry running desync, minor tool parsing edge cases | All fixed and covered by unit tests |
 | INFO-1 | Info | Source maps in `.vsix` (`*.map` vs `**/*.map`); missing CSP in `demo/index.html` | Updated `.vscodeignore` to `**/*.map` and added strict CSP meta tag to `demo/index.html` |
+
+### v0.2.0 Audit (Post-Feature Addition)
+
+Zero **CRITICAL** or **HIGH** findings. All **MEDIUM** and **LOW** findings from the v0.2.0 AppSec review were remediated:
+
+| ID | Severity | Finding | Remediation |
+| --- | --- | --- | --- |
+| MEDIUM-1 | Medium | Markdown link/image/HTML injection, `\|` table breakout, and triple-backtick fence breakout in `formatMarkdownReport` / `drawBrailleMap` | Full backslash + metacharacter escaping in `escapeMd()`, control/bidi stripping and backtick sanitization on canvas text, dynamic fence length (`>= 4` backticks) |
+| MEDIUM-2 | Medium | AST surface guard missed relative escapes from `src/core`, `import=`, aliasing `DatabaseSync`/`globalThis`, `openSync`, `copy`, `node:module`/`vm`/`inspector` | Hardened `scripts/check-surface.mjs` to check relative import boundaries, `import=`, unwrapped expressions, global holders, `openSync`, `DatabaseSync` aliasing/spreads, and expanded fs/module denylists |
+| MEDIUM-3 | Medium | `_selectedStation`/`_replayIndex` desync across session switches, `setReplayIndex` at `total`, and dropped user `refreshSessions` calls | Reset filter/replay on session & demo switches, normalize `index >= total` to Live, and queue pending refreshes with `_pendingRefresh` |
+| MEDIUM-4 | Medium | Unbounded `shortModel()` on `claude-*` strings and unused `entries`/`model` exposed in Webview IPC | Added `clean(..., 24)` on Claude models, sanitized `step.model`/`tc.name` in `reducer.ts`, stripped `entries` and `model` from Webview IPC state |
+| LOW-1..4 | Low | Prototype-property lookups (`COLOR_NAMES`/`stations`/`STATION_COLORS`), `NaN` propagation in formatters/metrics, negative-age SMIL animations, unhandled clipboard rejections, unreset `openRowId` | Added `Object.hasOwn` + `VALID_STATIONS` guards, `Number.isFinite` checks, `>= 0` animation age guards, `vscode.env.clipboard` + `.catch()`, and `openRowId` reset on session switch |
 
 ## Reporting a Vulnerability
 

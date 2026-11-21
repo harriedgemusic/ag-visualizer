@@ -1,3 +1,5 @@
+import type { SessionBreakdown } from '../core/breakdown'
+import type { StationInspection } from '../core/inspector'
 import type { Palette } from '../core/palette'
 import type { StationId, Status } from '../core/types'
 
@@ -29,15 +31,31 @@ export type SessionOption = {
   mtimeMs: number
 }
 
+export type ReplayStatePayload = {
+  index: number
+  total: number
+  isLive: boolean
+  turnIndices: number[]
+  turnNumber: number
+  totalTurns: number
+}
+
 export type WebviewStateMessage = {
   type: 'state'
   svg: string
+  brailleMap: string
+  markdownReport: string
+  viewMode: 'svg' | 'braille'
   nowWhat: string
   nowMeter: string
   mode: 'auto' | 'pinned' | 'demo'
   activeSessionId?: string
   sessions: SessionOption[]
   rows: FeedRowPayload[]
+  breakdown: SessionBreakdown
+  selectedStation?: StationId
+  inspection?: Omit<StationInspection, 'entries'>
+  replay: ReplayStatePayload
   zoom: number
   hidden: boolean
   layout: 'you-top' | 'you-bottom'
@@ -47,7 +65,6 @@ export type WebviewStateMessage = {
   textSize: 'caption' | 'footnote' | 'body'
   palette: Palette
   hasContext: boolean
-  model?: string
   contextPct?: number
   strings: {
     title: string
@@ -72,3 +89,7 @@ export type WebviewCommandMessage =
   | { type: 'toggleLayout' }
   | { type: 'selectSession'; sessionId: string }
   | { type: 'openPanel' }
+  | { type: 'selectStation'; station?: StationId }
+  | { type: 'setViewMode'; viewMode: 'svg' | 'braille' }
+  | { type: 'setReplayIndex'; index?: number }
+  | { type: 'copyMarkdown' }

@@ -86,7 +86,8 @@ function colorsFrom(v: unknown): Partial<Palette> {
   const out: Partial<Palette> = {}
   if (v && typeof v === 'object' && !Array.isArray(v)) {
     for (const [rawKey, rawVal] of Object.entries(v as Record<string, unknown>)) {
-      const key = COLOR_NAMES[rawKey.trim()]
+      const name = rawKey.trim()
+      const key = Object.hasOwn(COLOR_NAMES, name) ? COLOR_NAMES[name] : undefined
       const hex = typeof rawVal === 'string' ? normalizeHex(rawVal) : undefined
       if (key !== undefined && hex !== undefined) out[key] = hex
     }
@@ -94,7 +95,8 @@ function colorsFrom(v: unknown): Partial<Palette> {
   }
   for (const pair of list(v)) {
     const at = pair.indexOf('=')
-    const key = COLOR_NAMES[pair.slice(0, at).trim()]
+    const name = pair.slice(0, at).trim()
+    const key = Object.hasOwn(COLOR_NAMES, name) ? COLOR_NAMES[name] : undefined
     const hex = normalizeHex(pair.slice(at + 1))
     if (at < 1 || key === undefined || hex === undefined) continue
     out[key] = hex

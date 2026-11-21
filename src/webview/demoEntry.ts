@@ -1,23 +1,39 @@
+import { drawBrailleMap, formatMarkdownReport } from '../core/braille'
+import { computeBreakdown } from '../core/breakdown'
 import { formatMs, formatTokens } from '../core/classify'
 import { DEMO_TIMELINE } from '../core/demo'
 import { drawMap } from '../core/draw'
 import { foldRows, nowParts } from '../core/feed'
+import { filterBoardByStation, inspectStation } from '../core/inspector'
 import { resolvePalette } from '../core/palette'
 import { TranscriptReducer } from '../core/reducer'
+import { sliceBoardAt } from '../core/replay'
 import { setupFrom } from '../core/setup'
+import { STATIONS } from '../core/setup'
 import { LANGUAGES } from '../core/text'
-import type { UserOptions } from '../core/types'
+import type { StationId, UserOptions } from '../core/types'
+
+const VALID_STATIONS = new Set<string>(STATIONS.map(s => s.id))
+const asStationId = (raw: string | null | undefined): StationId | undefined =>
+  raw && VALID_STATIONS.has(raw) ? (raw as StationId) : undefined
 
 const mapEl = document.getElementById('demo-map') as HTMLElement
+const brailleEl = document.getElementById('demo-braille') as HTMLPreElement
 const feedEl = document.getElementById('demo-feed') as HTMLElement
 const nowWhatEl = document.getElementById('demo-now-what') as HTMLElement
 const nowMeterEl = document.getElementById('demo-now-meter') as HTMLElement
+const breakdownEl = document.getElementById('demo-breakdown') as HTMLElement
+const inspectorEl = document.getElementById('demo-inspector') as HTMLElement
+const replaySlider = document.getElementById('demo-replay') as HTMLInputElement
+const replayLabel = document.getElementById('demo-replay-label') as HTMLElement
 const rawJsonEl = document.getElementById('demo-raw') as HTMLElement
 const keptJsonEl = document.getElementById('demo-kept') as HTMLElement
 
 const btnPlay = document.getElementById('btn-play') as HTMLButtonElement
 const btnRestart = document.getElementById('btn-restart') as HTMLButtonElement
 const btnStep = document.getElementById('btn-step') as HTMLButtonElement
+const btnView = document.getElementById('btn-view') as HTMLButtonElement
+const btnCopy = document.getElementById('btn-copy') as HTMLButtonElement
 const selLang = document.getElementById('sel-lang') as HTMLSelectElement
 const selTheme = document.getElementById('sel-theme') as HTMLSelectElement
 const selLayout = document.getElementById('sel-layout') as HTMLSelectElement
@@ -40,19 +56,27 @@ let playing = true
 let timer: number | null = null
 let baseMs = Date.now()
 let lastSvg = ''
+let viewMode: 'svg' | 'braille' = 'svg'
+let selectedStation: StationId | undefined
+let replayIndex: number | undefined
+let copyTimer: number | undefined
 let lastRawPreview: unknown = { info: 'Waiting for first Antigravity transcript step...' }
 let lastKeptPreview: unknown = { entries: [] }
 
 function esc(text: string): string {
-  return text.replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c] ?? c)
+  return text.replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[c] ?? c)
 }
 
 function renderDemo(): void {
   setup = setupFrom(options, 'en')
   reducer.updateSetup(setup)
-  const board = reducer.board()
+  const rawBoard = reducer.board()
+  const frame = sliceBoardAt(rawBoard, replayIndex, Date.now())
+  const board = frame.board
+  const renderNow = frame.cursor.renderNow
   const isLight = setup.theme === 'light'
   const palette = resolvePalette(setup, isLight)
+  const renderSetup = { ...setup, theme: isLight ? ('light' as const) : ('dark' as const) }
 
   document.body.style.background = palette.ground
   document.body.style.color = palette.bone
@@ -62,17 +86,72 @@ function renderDemo(): void {
   document.documentElement.style.setProperty('--ag-error', palette.red)
   document.documentElement.style.setProperty('--ag-panel', palette.raised)
 
-  const svg = drawMap(board, Date.now(), { ...setup, theme: isLight ? 'light' : 'dark' })
-  if (svg !== lastSvg) {
-    mapEl.innerHTML = svg
-    lastSvg = svg
+  if (viewMode === 'braille') {
+    mapEl.style.display = 'none'
+    brailleEl.style.display = 'block'
+    brailleEl.textContent = drawBrailleMap(board, renderNow, renderSetup)
+  } else {
+    brailleEl.style.display = 'none'
+    mapEl.style.display = 'block'
+    const svg = drawMap(board, renderNow, renderSetup, { selectedStation })
+    if (svg !== lastSvg) {
+      mapEl.innerHTML = svg
+      lastSvg = svg
+    }
   }
+
+  replaySlider.max = String(frame.cursor.total)
+  replaySlider.value = String(frame.cursor.index)
+  replayLabel.textContent = frame.cursor.isLive ? '● Live' : `${frame.cursor.index}/${frame.cursor.total}`
 
   const parts = nowParts(board, setup.t)
   nowWhatEl.textContent = parts.what
   nowMeterEl.textContent = parts.meter
 
-  const rows = foldRows(board.entries, 16, setup.subagentNames)
+  const bd = computeBreakdown(board, setup)
+  if (bd.shares.length === 0) {
+    breakdownEl.innerHTML = ''
+  } else {
+    breakdownEl.innerHTML = `
+      <div class="bd-head">${bd.turns}t · ${bd.totalCalls}× · ${esc(formatMs(Math.max(1, bd.totalTimeMs), setup.t))} · ${formatTokens(bd.totalTokens)} tok</div>
+      <div class="bd-bar">${bd.shares
+        .map(
+          sh =>
+            `<button type="button" class="bd-seg" data-station="${esc(sh.station)}" style="flex:${Math.max(1, sh.timePct || sh.count)} 1 0" title="${esc(sh.stationName)}: ${sh.timePct}%"></button>`,
+        )
+        .join('')}</div>
+    `
+    breakdownEl.querySelectorAll<HTMLButtonElement>('.bd-seg').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const st = asStationId(btn.dataset.station)
+        if (!st) return
+        selectedStation = selectedStation === st ? undefined : st
+        lastSvg = ''
+        renderDemo()
+      })
+    })
+  }
+
+  if (selectedStation) {
+    const ins = inspectStation(board, selectedStation, setup)
+    inspectorEl.style.display = 'block'
+    inspectorEl.innerHTML = `
+      <div class="ins-head">
+        <strong>${esc(ins.stationName)} (${ins.callSharePct}%)</strong>
+        <button type="button" id="demo-ins-close">×</button>
+      </div>
+      <div class="ins-meta">${ins.count}× · ${esc(formatMs(Math.max(1, ins.totalTimeMs), setup.t))}${ins.tokens > 0 ? ` · +${formatTokens(ins.tokens)}` : ''}</div>
+    `
+    document.getElementById('demo-ins-close')?.addEventListener('click', () => {
+      selectedStation = undefined
+      lastSvg = ''
+      renderDemo()
+    })
+  } else {
+    inspectorEl.style.display = 'none'
+  }
+
+  const rows = foldRows(filterBoardByStation(board, selectedStation), 16, setup.subagentNames)
   if (rows.length === 0) {
     feedEl.innerHTML = `<div class="feed-empty">${esc(setup.t.nothingYet)}</div>`
   } else {
@@ -179,6 +258,7 @@ function schedule(): void {
 function restart(): void {
   if (timer !== null) window.clearTimeout(timer)
   idx = 0
+  replayIndex = undefined
   baseMs = Date.now()
   reducer.reset()
   lastSvg = ''
@@ -193,6 +273,45 @@ for (const lang of LANGUAGES) {
   selLang.appendChild(opt)
 }
 selLang.value = 'en'
+
+mapEl.addEventListener('click', ev => {
+  const target = (ev.target as Element | null)?.closest('.ag-station') as Element | null
+  const station = asStationId(target?.getAttribute('data-station'))
+  if (!station) return
+  selectedStation = selectedStation === station ? undefined : station
+  lastSvg = ''
+  renderDemo()
+})
+
+replaySlider.addEventListener('input', () => {
+  const val = Number(replaySlider.value)
+  if (!Number.isFinite(val)) return
+  const total = reducer.board().entries.length
+  replayIndex = val >= total ? undefined : Math.max(0, Math.floor(val))
+  lastSvg = ''
+  renderDemo()
+})
+
+btnView.addEventListener('click', () => {
+  viewMode = viewMode === 'svg' ? 'braille' : 'svg'
+  btnView.textContent = viewMode === 'svg' ? 'Braille' : 'SVG'
+  lastSvg = ''
+  renderDemo()
+})
+
+btnCopy.addEventListener('click', () => {
+  const frame = sliceBoardAt(reducer.board(), replayIndex, Date.now())
+  const report = formatMarkdownReport(frame.board, frame.cursor.renderNow, setup)
+  void Promise.resolve(navigator.clipboard?.writeText(report))
+    .then(() => {
+      btnCopy.textContent = 'Copied!'
+      if (copyTimer !== undefined) window.clearTimeout(copyTimer)
+      copyTimer = window.setTimeout(() => {
+        btnCopy.textContent = 'Copy MD'
+      }, 1200)
+    })
+    .catch(() => {})
+})
 
 btnPlay.addEventListener('click', () => {
   playing = !playing

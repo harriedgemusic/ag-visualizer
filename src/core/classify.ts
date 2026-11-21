@@ -744,7 +744,7 @@ export function classifyTool(tool: string, rawInput: Record<string, unknown>, se
 export function shortModel(model: string): string {
   const claude = /claude-([a-z]+)-(\d+)(?:-(\d+))?/i.exec(model)
   if (claude) {
-    return `${claude[1]} ${claude[2]}${claude[3] !== undefined ? `.${claude[3]}` : ''}`
+    return clean(`${claude[1]} ${claude[2]}${claude[3] !== undefined ? `.${claude[3]}` : ''}`, 24)
   }
   const cleaned = model
     .replace(/^models\//i, '')
@@ -755,6 +755,7 @@ export function shortModel(model: string): string {
 }
 
 export function formatMs(ms: number, t: Strings): string {
+  if (!Number.isFinite(ms)) return t.ms(0)
   const tenths = Math.round(ms / 100)
   const seconds = Math.round(ms / 1000)
   if (Math.round(ms) < 1000) return t.ms(Math.max(1, Math.round(ms)))
@@ -765,6 +766,7 @@ export function formatMs(ms: number, t: Strings): string {
 }
 
 export function formatTokens(tokens: number): string {
+  if (!Number.isFinite(tokens)) return '0'
   const n = Math.max(0, Math.round(tokens))
   if (n < 1000) return String(n)
   const k = Math.round(n / 1000)

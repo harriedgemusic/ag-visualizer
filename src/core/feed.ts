@@ -78,8 +78,9 @@ export function nowParts(board: Board, t: Strings): { what: string; meter: strin
     top === undefined
       ? t.idle
       : `${t.stations[top.station]}: ${top.label}${running.length > 1 ? t.andMore(running.length - 1) : ''}`
+  const hasCtx = board.context !== undefined && Number.isFinite(board.context)
   const figures = [
-    board.context === undefined ? '' : `${Math.round(board.context)}%`,
+    hasCtx ? `${Math.max(0, Math.min(100, Math.round(board.context!)))}%` : '',
     board.model === undefined || top?.station === 'model' ? '' : shortModel(board.model),
   ]
   return { what, meter: figures.filter(Boolean).join(' · ') }
@@ -87,7 +88,8 @@ export function nowParts(board: Board, t: Strings): { what: string; meter: strin
 
 export function describeNow(board: Board, t: Strings): string {
   const running = board.entries.filter(e => e.status === 'run')
-  const context = board.context === undefined ? '' : ` · ${t.context} ${Math.round(board.context)}%`
+  const hasCtx = board.context !== undefined && Number.isFinite(board.context)
+  const context = hasCtx ? ` · ${t.context} ${Math.max(0, Math.min(100, Math.round(board.context!)))}%` : ''
   const top = running[running.length - 1]
   const model = board.model !== undefined ? ` · ${shortModel(board.model)}` : ''
   if (top === undefined) return `${t.idle}${context}${model}`

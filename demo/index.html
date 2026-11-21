@@ -120,6 +120,30 @@
     .row.is-running, .row.is-switch { color: var(--ag-accent); }
     .row.is-error { color: var(--ag-error); }
     .row.is-ok { color: var(--ag-dim); }
+    .braille-stage {
+      margin: 0;
+      padding: 8px;
+      font-size: 10.5px;
+      line-height: 1.2;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .replay-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--ag-dim);
+    }
+    .replay-row input { flex: 1 1 auto; accent-color: var(--ag-accent); }
+    .bd-head { font-size: 11px; color: var(--ag-dim); margin: 8px 0 4px 0; }
+    .bd-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; gap: 1px; }
+    .bd-seg { border: none; padding: 0; background: var(--ag-accent); opacity: 0.85; cursor: pointer; }
+    .bd-seg:hover { opacity: 1; }
+    .ins-box { margin-top: 8px; padding: 8px; border: 1px solid var(--ag-border); border-radius: 6px; font-size: 11px; }
+    .ins-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .ins-meta { color: var(--ag-dim); }
     .privacy-grid {
       display: flex;
       flex-direction: column;
@@ -156,6 +180,8 @@
         <button id="btn-play" type="button">Pause</button>
         <button id="btn-step" type="button">Step</button>
         <button id="btn-restart" type="button">Restart</button>
+        <button id="btn-view" type="button">Braille</button>
+        <button id="btn-copy" type="button">Copy MD</button>
         <select id="sel-lang" aria-label="Language"></select>
         <select id="sel-theme" aria-label="Theme">
           <option value="dark">Dark</option>
@@ -174,10 +200,17 @@
     <div class="grid">
       <div class="card">
         <div id="demo-map" class="map-stage"></div>
+        <pre id="demo-braille" class="braille-stage" style="display:none"></pre>
+        <div class="replay-row">
+          <input id="demo-replay" type="range" min="0" max="0" value="0" />
+          <span id="demo-replay-label">● Live</span>
+        </div>
         <div class="now-bar">
           <span id="demo-now-what"></span>
           <span id="demo-now-meter" class="now-meter"></span>
         </div>
+        <div id="demo-breakdown"></div>
+        <div id="demo-inspector" class="ins-box" style="display:none"></div>
         <div id="demo-feed" class="feed"></div>
       </div>
       <div class="privacy-grid">
