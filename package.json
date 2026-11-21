@@ -5,6 +5,7 @@
   "version": "0.2.0",
   "publisher": "ag-visualizer",
   "license": "MIT",
+  "icon": "media/icon.png",
   "homepage": "https://github.com/harriedgemusic/ag-visualizer",
   "repository": {
     "type": "git",

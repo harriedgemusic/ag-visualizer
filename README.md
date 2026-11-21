@@ -41,6 +41,18 @@ A calm, passive, privacy-first live visual map of **Antigravity IDE** agent acti
 
 ## Installation in Antigravity IDE
 
+### Manual Installation from VSIX (Recommended)
+
+1. Download **`ag-visualizer-0.2.0.vsix`** from [GitHub Releases](https://github.com/harriedgemusic/ag-visualizer/releases/latest).
+2. In **Antigravity IDE**, open the **Extensions** panel (`Cmd+Shift+X` / `Ctrl+Shift+X`), click the **`⋯`** menu at the top-right, choose **Install from VSIX...**, and select `ag-visualizer-0.2.0.vsix`.
+   - Or install via CLI:
+     ```bash
+     "/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --install-extension ag-visualizer-0.2.0.vsix --force
+     ```
+3. Reload Antigravity IDE (`Developer: Reload Window`), then click the **Work Map** icon in the Activity Bar or run **Antigravity Work Map: Open Beside Chat** from the Command Palette.
+
+### Build from Source
+
 ```bash
 git clone https://github.com/harriedgemusic/ag-visualizer.git
 cd ag-visualizer
@@ -49,8 +61,6 @@ npm run check
 npm run package
 "/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --install-extension ag-visualizer-0.2.0.vsix --force
 ```
-
-Reload Antigravity IDE (`Developer: Reload Window`), then click the **Work Map** icon in the Activity Bar or run **Antigravity Work Map: Open Beside Chat** from the Command Palette.
 
 ## Standalone Browser Demo
 
